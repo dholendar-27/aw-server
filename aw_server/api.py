@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from socket import gethostname
+from aw_core.cache import *
 from typing import (
     Any,
     Callable,
@@ -15,7 +16,7 @@ from typing import (
 )
 from uuid import uuid4
 from aw_core.util import decrypt_uuid, encrypt_uuid
-
+from cachetools import Cache
 import iso8601
 from aw_core.dirs import get_data_dir
 from aw_core.log import get_log_file_path
@@ -27,7 +28,6 @@ import keyring
 from .__about__ import __version__
 from .exceptions import NotFound
 import requests as req
-
 logger = logging.getLogger(__name__)
 
 def get_device_id() -> str:
@@ -75,6 +75,8 @@ def _log_request_exception(e: req.RequestException):
 
 class ServerAPI:
     def __init__(self, db, testing) -> None:
+        cache_key = "current_user_credentials"
+        cache_user_credentials(cache_key)
         self.db = db
         self.testing = testing
         self.last_event = {}  # type: dict
@@ -131,7 +133,11 @@ class ServerAPI:
         return self._post(endpoint , user, {"Authorization" : token})
 
     def get_user_credentials(self, userId, token):
+        
+        cache_key = "current_user_credentials"
+
         endpoint = f"/web/user/{userId}/credentials"
+        print(endpoint)
         user_credentials = self._get(endpoint, {"Authorization" : token})
         if user_credentials.status_code == 200 and json.loads(user_credentials.text)["code"] == 'RCI0000' :
 
@@ -144,12 +150,19 @@ class ServerAPI:
             encrypted_db_key = encrypt_uuid(db_key,key)
             encrypted_data_encryption_key = encrypt_uuid(data_encryption_key,key)
             encrypted_user_key = encrypt_uuid(user_key,key)
-            keyring.set_password("sdcu", "sdcu", user_key)
-            keyring.set_password("sdcdb", "sdcdb", encrypted_db_key)
-            keyring.set_password("sdcdt", "sdcdt", encrypted_data_encryption_key)
-            keyring.set_password("sdce", "sdce", email)
-            keyring.set_password("sdcp", "sdcp", phone)
-            key_decoded = keyring.get_password("sdcu", "sdcu")
+            SD_KEYS = {
+                "user_key": user_key,
+                "encrypted_db_key": encrypted_db_key,
+                "encrypted_data_encryption_key": encrypted_data_encryption_key,
+                "email": email,
+                "phone": phone
+            }
+            store_credentials(cache_key, SD_KEYS)
+            print('------------->')
+            serialized_data = json.dumps(SD_KEYS)
+            keyring.set_password("SD_KEYS", "SD_KEYS", serialized_data)
+            cached_credentials = get_credentials(cache_key)
+            key_decoded = cached_credentials.get("user_key")
             print(f"user_key: {decrypt_uuid(encrypted_db_key, key_decoded)}")
             print(f"db_key: {decrypt_uuid(encrypted_user_key,key_decoded)}")
             print(f"watcher_key: {decrypt_uuid(encrypted_data_encryption_key, key_decoded)}")

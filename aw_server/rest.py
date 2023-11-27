@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import iso8601
 from aw_core import schema
 from aw_core.models import Event
+from aw_core.cache import *
 from aw_query.exceptions import QueryException
 from flask import (
     Blueprint,
@@ -23,11 +24,11 @@ from flask_restx import Api, Resource, fields
 import jwt
 import keyring
 import sys
-import pdfkit
 from io import BytesIO
 from . import logger
 from .api import ServerAPI
 from .exceptions import BadRequest, Unauthorized
+
 
 def host_header_check(f):
     """
@@ -61,7 +62,6 @@ def host_header_check(f):
 
 blueprint = Blueprint("api", __name__, url_prefix="/api")
 api = Api(blueprint, doc="/", decorators=[host_header_check])
-
 
 # Loads event and bucket schema from JSONSchema in aw_core
 event = api.schema_model("Event", schema.get_json_schema("event"))
@@ -135,12 +135,15 @@ class InfoResource(Resource):
     def get(self) -> Dict[str, Dict]:
         return current_app.api.get_info()
 
+
 # Users
 
 
 @api.route("/0/user")
 class UserResource(Resource):
     def post(self):
+        cache_key = "current_user_credentials"
+        cached_credentials = cache_user_credentials(cache_key)
         if not is_internet_connected():
             print("Please connect to internet and try again.")
         data = request.get_json()
@@ -148,32 +151,35 @@ class UserResource(Resource):
             return {"message": "User name is mandatory"}, 400
         elif not data['password']:
             return {"message": "Password is mandatory"}, 400
-        user = keyring.get_password("sdcu", "sdcu")
+        if cached_credentials is not None:
+            user = cached_credentials.get("encrypted_db_key")
+        else:
+            user = None
         if True:
             result = current_app.api.create_user(data)
-            if result.status_code == 200 and json.loads(result.text)["code"] == 'UASI0001' :
+            if result.status_code == 200 and json.loads(result.text)["code"] == 'UASI0001':
                 userPayload = {
-                    "userName" : data['email'],
-                    "password" : data['password']
+                    "userName": data['email'],
+                    "password": data['password']
                 }
                 authResult = current_app.api.authorize(userPayload)
 
                 if 'company' not in data:
                     return json.loads(authResult.text), 200
 
-                if authResult.status_code == 200 and json.loads(authResult.text)["code"] == 'RCI0000' :
+                if authResult.status_code == 200 and json.loads(authResult.text)["code"] == 'RCI0000':
                     token = json.loads(authResult.text)["data"]["access_token"]
                     id = json.loads(authResult.text)["data"]["id"]
                     companyPayload = {
-                        "name" : data['company'],
-                        "code" : data['company'],
-                        "status" : "ACTIVE"
+                        "name": data['company'],
+                        "code": data['company'],
+                        "status": "ACTIVE"
                     }
 
-                    companyResult = current_app.api.create_company(companyPayload,'Bearer '+token)
+                    companyResult = current_app.api.create_company(companyPayload, 'Bearer ' + token)
 
-                    if companyResult.status_code == 200 and json.loads(companyResult.text)["code"] == 'UASI0006' :
-                        current_app.api.get_user_credentials(id,'Bearer '+token)
+                    if companyResult.status_code == 200 and json.loads(companyResult.text)["code"] == 'UASI0006':
+                        current_app.api.get_user_credentials(id, 'Bearer ' + token)
                         init_db = current_app.api.init_db()
                         if init_db:
                             return {"message": "Account created successfully"}, 200
@@ -189,6 +195,7 @@ class UserResource(Resource):
         else:
             return {"message": "User already exist"}, 200
 
+
 @api.route("/0/company")
 class CompanyResource(Resource):
     def post(self):
@@ -199,44 +206,58 @@ class CompanyResource(Resource):
         if not data['name']:
             return {"message": "Company name is mandatory"}, 400
         companyPayload = {
-            "name" : data['name'],
-            "code" : data['code'],
-            "status" : "ACTIVE"
+            "name": data['name'],
+            "code": data['code'],
+            "status": "ACTIVE"
         }
 
-        companyResult = current_app.api.create_company(companyPayload,token)
+        companyResult = current_app.api.create_company(companyPayload, token)
 
-        if companyResult.status_code == 200 and json.loads(companyResult.text)["code"] == 'UASI0006' :
+        if companyResult.status_code == 200 and json.loads(companyResult.text)["code"] == 'UASI0006':
             return json.loads(companyResult.text), 200
         else:
             return json.loads(companyResult.text), companyResult.status_code
 
-#Login by system credentials
+
+# Login by system credentials
 @api.route("/0/login")
 class LoginResource(Resource):
     def post(self):
         data = request.get_json()
-        user_key = keyring.get_password("sdcu", "sdcu")
+        cache_key = "current_user_credentials"
+        cached_credentials = cache_user_credentials(cache_key)
+        user_key = cached_credentials.get("user_key")
+        print(user_key)
         if user_key:
             if authenticate(data['userName'], data['password']):
-                encoded_jwt = jwt.encode({"user": data['userName'], "email" : keyring.get_password("sdce", "sdce"), "phone" : keyring.get_password("sdcp", "sdcp")}, user_key , algorithm="HS256")
-                return {"code": "SDI0000", "message": "Success", "data" : {"token": encoded_jwt}}, 200
+                encoded_jwt = jwt.encode({"user": data['userName'], "email": cached_credentials.get("email"),
+                                          "phone": cached_credentials.get("phone")}, user_key, algorithm="HS256")
+                return {"code": "SDI0000", "message": "Success", "data": {"token": encoded_jwt}}, 200
             else:
                 return {"code": "SDE0000", "message": "Username or password is wrong"}, 200
         else:
             return {"message": "User does not exist"}, 200
 
     def get(self):
-        user_key = keyring.get_password("sdcu", "sdcu")
+        data = request.get_json()
+        cache_key = "current_user_credentials"
+        cached_credentials = cache_user_credentials(cache_key)
+        if cached_credentials is not None:
+            user_key = cached_credentials.get("encrypted_db_key")
+        else:
+            user_key = None
         if user_key:
             return {"message": "User exist"}, 200
         else:
             return {"message": "User does not exist"}, 401
 
-#Login by ralvie cloud
+
+# Login by ralvie cloud
 @api.route("/0/ralvie/login")
 class RalvieLoginResource(Resource):
     def post(self):
+        cache_key = "current_user_credentials"
+        cached_credentials = cache_user_credentials(cache_key)
         if not is_internet_connected():
             return {"message": "Please connect to internet and try again."}, 200
         data = request.get_json()
@@ -246,22 +267,29 @@ class RalvieLoginResource(Resource):
             return {"message": "Password is mandatory"}, 400
         reset_user()
         authResult = current_app.api.authorize(data)
-        if authResult.status_code == 200 and json.loads(authResult.text)["code"] == 'UASI0011' :
-            user_key = keyring.get_password("sdcu", "sdcu")
-            if not user_key:
+        if authResult.status_code == 200 and json.loads(authResult.text)["code"] == 'UASI0011':
+            user_key = ""
+            if cached_credentials is not None:
+                user_key = cached_credentials.get("encrypted_db_key")
+            else:
+                user_key = None
+
+            if user_key is None:
                 token = json.loads(authResult.text)["data"]["access_token"]
                 id = json.loads(authResult.text)["data"]["id"]
-                current_app.api.get_user_credentials(id,'Bearer '+token)
+                current_app.api.get_user_credentials(id, 'Bearer ' + token)
                 init_db = current_app.api.init_db()
                 if not init_db:
                     reset_user()
                     return {"message": "Something went wrong"}, 500
-            user_key = keyring.get_password("sdcu", "sdcu")
-            encoded_jwt = jwt.encode({"user": getpass.getuser(), "email" : keyring.get_password("sdce", "sdce"), "phone" : keyring.get_password("sdcp", "sdcp")}, user_key , algorithm="HS256")
-            return {"code" : "UASI0011", "message" : json.loads(authResult.text)["message"], "data" : {"token": "Bearer "+encoded_jwt}}, 200
+            cached_credentials = cache_user_credentials(cache_key)
+            user_key = cached_credentials.get("user_key")
+            encoded_jwt = jwt.encode({"user": getpass.getuser(), "email": cached_credentials.get("email"),
+                                      "phone": cached_credentials.get("phone")}, user_key, algorithm="HS256")
+            return {"code": "UASI0011", "message": json.loads(authResult.text)["message"],
+                    "data": {"token": "Bearer " + encoded_jwt}}, 200
         else:
             return json.loads(authResult.text), 200
-
 
 
 # BUCKETS
@@ -281,12 +309,12 @@ class EventsResource(Resource):
         limit = int(args["limit"]) if "limit" in args else -1
         start = iso8601.parse_date(args["start"]) if "start" in args else None
         end = iso8601.parse_date(args["end"]) if "end" in args else None
- 
+
         events = current_app.api.get_formated_events(
             bucket_id, limit=limit, start=start, end=end
         )
         return events, 200
- 
+
     # TODO: How to tell expect that it could be a list of events? Until then we can't use validate.
     @api.expect(event)
     @copy_doc(ServerAPI.create_events)
@@ -297,16 +325,17 @@ class EventsResource(Resource):
                 bucket_id, data
             )
         )
- 
+
         if isinstance(data, dict):
             events = [Event(**data)]
         elif isinstance(data, list):
             events = [Event(**e) for e in data]
         else:
             raise BadRequest("Invalid POST data", "")
- 
+
         event = current_app.api.create_events(bucket_id, events)
         return event.to_json_dict() if event else None, 200
+
 
 @api.route("/0/buckets/")
 class BucketsResource(Resource):
@@ -516,7 +545,7 @@ class ExportAllResource(Resource):
     @api.doc(params={"format": "Export format (csv, excel, pdf)",
                      "date": "Date for which to export data (today, yesterday)"})
     def get(self):
-        export_format = request.args.get("format", "csv",)
+        export_format = request.args.get("format", "csv", )
         date = request.args.get("date", "today")
         if date not in ["today", "yesterday"]:
             return {"message": "Invalid date parameter"}, 400
@@ -532,7 +561,7 @@ class ExportAllResource(Resource):
             df = df[df["timestamp"].dt.date == (datetime.now() - timedelta(days=1)).date()]
         df["duration"] = df["duration"].apply(lambda x: f"{x:.3f}")
         df['data'] = df['data']
-        
+
         if export_format == "csv":
             return self.create_csv_response(df)
         elif export_format == "excel":
@@ -546,11 +575,11 @@ class ExportAllResource(Resource):
         csv_buffer = BytesIO()
         df.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
-        
+
         response = make_response(csv_buffer.getvalue())
         response.headers["Content-Disposition"] = "attachment; filename=aw-export.csv"
         response.headers["Content-Type"] = "text/csv"
-        
+
         return response
 
     def create_excel_response(self, df):
@@ -559,13 +588,13 @@ class ExportAllResource(Resource):
             df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
             df.to_excel(writer, index=False)
         excel_buffer.seek(0)
-        
+
         response = make_response(excel_buffer.getvalue())
         response.headers["Content-Disposition"] = "attachment; filename=aw-export.xlsx"
         response.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        
+
         return response
-    
+
     def create_pdf_response(self, df):
         css = """
         <style type="text/css">
@@ -588,7 +617,7 @@ class ExportAllResource(Resource):
 
         html_data = df.to_html(index=False)
         styled_html = f"{css}<body>{html_data}</body>"
-        
+
         options = {
             'page-size': 'Letter',
             'margin-top': '0.75in',
@@ -603,18 +632,16 @@ class ExportAllResource(Resource):
         }
 
         if sys.platform == "win32":
+            import pdfkit
             current_dir = os.path.dirname(os.path.abspath(__file__))
             activitywatch_dir = os.path.dirname(os.path.dirname(current_dir))
             pdfkit_config = pdfkit.configuration(wkhtmltopdf=activitywatch_dir + "/wkhtmltopdf.exe")
             pdf_data = pdfkit.from_string(styled_html, False, options=options, configuration=pdfkit_config)
-        else:
-            pdf_data = pdfkit.from_string(styled_html, False, options=options)
-        
-        response = make_response(pdf_data)
-        response.headers["Content-Type"] = "application/pdf"
-        response.headers["Content-Disposition"] = "attachment; filename=aw_export.pdf"
-        print(type(response))
-        return response
+            response = make_response(pdf_data)
+            response.headers["Content-Type"] = "application/pdf"
+            response.headers["Content-Disposition"] = "attachment; filename=aw_export.pdf"
+            print(type(response))
+            return response
 
 
 # TODO: Perhaps we don't need this, could be done with a query argument to /0/export instead
