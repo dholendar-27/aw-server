@@ -18,6 +18,13 @@ flask-restx = "^1.0.3"
 flask-cors = "*"
 importlib-metadata = {version = "*", python = "<3.10"}
 werkzeug = "^2.3.3"
+pyjwt="*"
+pandas="*"
+pdfkit="*"
+xlsxwriter="*"
+tzlocal="*"
+xhtml2pdf="*"
+reportlab="*"
 
 [tool.poetry.dev-dependencies]
 mypy = "*"
