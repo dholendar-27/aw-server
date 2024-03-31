@@ -99,12 +99,16 @@ def host_header_check(f):
             elif "/company" not in request.path:
                 cache_key = "TTim"
                 cached_credentials = cache_user_credentials(cache_key, "SD_KEYS")
-                user_key = cached_credentials.get("user_key")
-                try:
-                    jwt.decode(token.replace("Bearer ", ""), key=user_key, algorithms=["HS256"])
-                except jwt.InvalidTokenError as e:
-                    logging.error("Invalid token")
-                    return {"message": "Invalid token"}, 401
+                if cached_credentials is not None:
+                    user_key = cached_credentials.get("user_key")
+                    try:
+                        jwt.decode(token.replace("Bearer ", ""), key=user_key, algorithms=["HS256"])
+                    except jwt.InvalidTokenError as e:
+                        logging.error("Invalid token")
+                        return {"message": "Invalid token"}, 401
+                else:
+                    user_key=None
+                    logger.info("cache credentials are None.system checking..")
 
         server_host = current_app.config["HOST"]
         req_host = request.headers.get("host", None)
@@ -992,7 +996,7 @@ class ExportAllResource(Resource):
                 # Filter out blocked events
                 blocked_events = blocked_list()  # Example blocked events
                 combined_events = [event for event in buckets_export['events'] if
-                                   not (event.get('application_name') in blocked_events.get('app', []) or
+                                   not (event.get('app') in blocked_events.get('app', []) or
                                         event.get('url') in blocked_events.get('url', []))]
 
             df = pd.DataFrame(combined_events)[::-1]
