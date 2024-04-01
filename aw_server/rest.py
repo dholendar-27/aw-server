@@ -108,7 +108,7 @@ def host_header_check(f):
                         return {"message": "Invalid token"}, 401
                 else:
                     user_key=None
-                    logger.info("cache credentials are None.system checking....")
+                    logger.info("cache credentials are None at the time.system checking....please login")
 
         server_host = current_app.config["HOST"]
         req_host = request.headers.get("host", None)
