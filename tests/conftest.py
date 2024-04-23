@@ -1,8 +1,8 @@
 import logging
 
 import pytest
-from aw_client import ActivityWatchClient
-from aw_server.server import AWFlask
+from sd_client import ActivityWatchClient
+from sd_server.server import AWFlask
 
 logging.basicConfig(level=logging.WARN)
 
@@ -18,11 +18,11 @@ def flask_client(app):
 
 
 @pytest.fixture(scope="session")
-def aw_client():
+def sd_client():
     # TODO: Could it be possible to write a sisterclass of ActivityWatchClient
-    # which calls aw_server.api directly? Would it be of use? Would add another
+    # which calls sd_server.api directly? Would it be of use? Would add another
     # layer of integration tests that are actually more like unit tests.
-    c = ActivityWatchClient("aw-client-test", testing=True)
+    c = ActivityWatchClient("sd-client-test", testing=True)
     yield c
 
     # Delete test buckets after all tests needing the fixture have been run

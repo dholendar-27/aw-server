@@ -10,15 +10,15 @@ import numpy as np
 from tzlocal import get_localzone
 from xhtml2pdf import pisa
 from dateutil.parser import parse
-from aw_core.launch_start import delete_launch_app, launch_app, check_startup_status, set_autostart_registry
-from aw_core.util import authenticate, is_internet_connected, reset_user
+from sd_core.launch_start import delete_launch_app, launch_app, check_startup_status, set_autostart_registry
+from sd_core.util import authenticate, is_internet_connected, reset_user
 import pandas as pd
 from datetime import datetime, timedelta, date, time
 import iso8601
-from aw_core import schema, db_cache
-from aw_core.models import Event
-from aw_core.cache import *
-from aw_query.exceptions import QueryException
+from sd_core import schema, db_cache
+from sd_core.models import Event
+from sd_core.cache import *
+from sd_query.exceptions import QueryException
 from flask import (
     Blueprint,
     current_app,
@@ -32,8 +32,8 @@ from io import BytesIO
 from . import logger
 from .api import ServerAPI
 from .exceptions import BadRequest, Unauthorized
-from aw_qt.manager import Manager
-from aw_datastore.storages.peewee import blocked_apps,blocked_url
+from sd_qt.manager import Manager
+from sd_datastore.storages.peewee import blocked_apps,blocked_url
 
 application_cache_key = "application_cache"
 manager = Manager()
@@ -138,7 +138,7 @@ authorizations = {
 blueprint = Blueprint("api", __name__, url_prefix="/api")
 api = Api(blueprint, doc="/", decorators=[host_header_check], authorizations=authorizations)
 
-# Loads event and bucket schema from JSONSchema in aw_core
+# Loads event and bucket schema from JSONSchema in sd_core
 event = api.schema_model("Event", schema.get_json_schema("event"))
 bucket = api.schema_model("Bucket", schema.get_json_schema("bucket"))
 buckets_export = api.schema_model("Export", schema.get_json_schema("export"))
@@ -621,18 +621,18 @@ class BucketResource(Resource):
     @api.param("force", "Needs to be =1 to delete a bucket it non-testing mode")
     def delete(self, bucket_id):
         """
-         Delete a bucket. Only allowed if aw - server is running in testing mode
+         Delete a bucket. Only allowed if sd - server is running in testing mode
 
          @param bucket_id - ID of bucket to delete
 
          @return 200 if successful 404 if not ( or on error
         """
         args = request.args
-        # DeleteBucketUnauthorized if aw server is running in testing mode or if aw server is running in testing mode or if force 1
+        # DeleteBucketUnauthorized if sd server is running in testing mode or if sd server is running in testing mode or if force 1
         if not current_app.api.testing:
-            # DeleteBucketUnauthorized if aw server is running in testing mode or if force 1
+            # DeleteBucketUnauthorized if sd server is running in testing mode or if force 1
             if "force" not in args or args["force"] != "1":
-                msg = "Deleting buckets is only permitted if aw-server is running in testing mode or if ?force=1"
+                msg = "Deleting buckets is only permitted if sd-server is running in testing mode or if ?force=1"
                 raise Unauthorized("DeleteBucketUnauthorized", msg)
 
         current_app.api.delete_bucket(bucket_id)
@@ -1136,7 +1136,7 @@ class BucketExportResource(Resource):
         bucket_export = current_app.api.export_bucket(bucket_id)
         payload = {"buckets": {bucket_export["id"]: bucket_export}}
         response = make_response(json.dumps(payload))
-        filename = "aw-bucket-export_{}.json".format(bucket_export["id"])
+        filename = "sd-bucket-export_{}.json".format(bucket_export["id"])
         response.headers["Content-Disposition"] = "attachment; filename={}".format(
             filename
         )
@@ -1453,13 +1453,13 @@ class idletime(Resource):
 
          @return a JSON object with a list of modules in the
         """
-        module = manager.module_status("aw-watcher-afk")
+        module = manager.module_status("sd-watcher-afk")
         if module["is_alive"]:
-            manager.stop("aw-watcher-afk")
+            manager.stop("sd-watcher-afk")
             message = "idle time has stoppped"
             state = False
         else:
-            manager.start("aw-watcher-afk")
+            manager.start("sd-watcher-afk")
             message = "idle time has started"
             state = True
         current_app.api.save_settings("idle_time",state)

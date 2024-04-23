@@ -1,8 +1,8 @@
 import logging
 import sys
 
-from aw_core.log import setup_logging
-from aw_datastore import get_storage_methods
+from sd_core.log import setup_logging
+from sd_datastore import get_storage_methods
 
 from . import __version__
 from .config import config
@@ -13,20 +13,20 @@ logger = logging.getLogger(__name__)
 
 def main():
     """
-     Entry point for aw - server. This is the main function called by the executable and __main__. py
+     Entry point for sd - server. This is the main function called by the executable and __main__. py
     """
     """Called from the executable and __main__.py"""
 
     settings, storage_method = parse_settings()
 
     # FIXME: The LogResource API endpoint relies on the log being in JSON format
-    # at the path specified by aw_core.log.get_log_file_path(). We probably want
+    # at the path specified by sd_core.log.get_log_file_path(). We probably want
     # to write the LogResource API so that it does not depend on any physical file
     # but instead add a logging handler that it can use privately.
     # That is why log_file_json=True currently.
     # UPDATE: The LogResource API is no longer available so log_file_json is now False.
     setup_logging(
-        "aw-server",
+        "sd-server",
         testing=settings.testing,
         verbose=settings.verbose,
         log_stderr=True,
@@ -68,7 +68,7 @@ def parse_settings():
     parser.add_argument(
         "--testing",
         action="store_true",
-        help="Run aw-server in testing mode using different ports and database",
+        help="Run sd-server in testing mode using different ports and database",
     )
     parser.add_argument("--verbose", action="store_true", help="Be chatty.")
     parser.add_argument(

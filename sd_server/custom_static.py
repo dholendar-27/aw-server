@@ -1,7 +1,7 @@
 """
 Contains endpoints, as well as utility functions for custom static content.
 
-NOTE: Experimental, not (yet) implemented in aw-server-rust.
+NOTE: Experimental, not (yet) implemented in sd-server-rust.
 
 Idea: Allow custom watchers to extend the Web UI and to write custom visualizations completely independently and free.
 
@@ -11,7 +11,7 @@ Usage for the watcher developer:
 - Register your watcher visualization in the config:
 
 [server.custom_static]
-aw-watcher-example=/home/user/path/to/static_dir/
+sd-watcher-example=/home/user/path/to/static_dir/
 
 - Your custom static content automatically gets the data for the requested time span as GET parameter called "data".
 Another parameter called "view" can be used if you want to create multiple visualizations for a single watcher.

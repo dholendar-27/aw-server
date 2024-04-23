@@ -1,13 +1,13 @@
 [tool.poetry]
-name = "aw-server"
+name = "sd-server"
 version = "0.12.0"
 description = "Server for ActivityWatch"
 authors = ["Erik Bjäreholt <erik@bjareho.lt>"]
 license = "MPL-2.0"
-include = ["aw_server/static/*"]
+include = ["sd_server/static/*"]
 
 [tool.poetry.scripts]
-aw-server = "aw_server:main"
+aw-server = "sd_server:main"
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -39,7 +39,7 @@ black = "^23.3.0"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "--cov-report=term --cov-report=xml --cov-report=html --cov=aw_server"
+addopts = "--cov-report=term --cov-report=xml --cov-report=html --cov=sd_server"
 python_files = ["*.py",]
 
 [tool.ruff]

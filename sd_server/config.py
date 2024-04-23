@@ -1,5 +1,5 @@
-# This is a copy of aw_core. config. load_config_toml but with some modifications
-from aw_core.config import load_config_toml
+# This is a copy of sd_core. config. load_config_toml but with some modifications
+from sd_core.config import load_config_toml
 
 default_config = """
 [server]
@@ -19,4 +19,4 @@ cors_origins = ""
 [server-testing.custom_static]
 """.strip()
 
-config = load_config_toml("aw-server", default_config)
+config = load_config_toml("sd-server", default_config)

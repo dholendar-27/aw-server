@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from aw_core.dirs import get_config_dir
+from sd_core.dirs import get_config_dir
 
 
 class Settings:
@@ -12,7 +12,7 @@ class Settings:
          @param testing - True if we are testing
         """
         filename = "settings.json" if not testing else "settings-testing.json"
-        self.config_file = Path(get_config_dir("aw-server")) / filename
+        self.config_file = Path(get_config_dir("sd-server")) / filename
         self.load()
 
     def __getitem__(self, key):

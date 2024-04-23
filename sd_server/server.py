@@ -3,9 +3,9 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, List
 import webbrowser
-import aw_datastore
+import sd_datastore
 import flask.json.provider
-from aw_datastore import Datastore
+from sd_datastore import Datastore
 from flask import (
     Blueprint,
     Flask,
@@ -49,7 +49,7 @@ class AWFlask(Flask):
          @param static_folder - path to folder where static files are stored
          @param static_url_path - path to url where static files are
         """
-        name = "aw-server"
+        name = "sd-server"
         self.json_provider_class = CustomJSONProvider
         # only prettyprint JSON if testing (due to perf)
         self.json_provider_class.compact = not testing
@@ -68,7 +68,7 @@ class AWFlask(Flask):
         # Initialize datastore and API
         # Get the storage method for the datastore.
         if storage_method is None:
-            storage_method = aw_datastore.get_storage_methods()["memory"]
+            storage_method = sd_datastore.get_storage_methods()["memory"]
         db = Datastore(storage_method, testing=testing)
         self.api = ServerAPI(db=db, testing=testing)
         self.api.ralvie_server_queue.start()
@@ -162,18 +162,18 @@ def _config_cors(cors_origins: List[str], testing: bool):
 
     # Use this method to add CORS origins to the CORS_origins list.
     if testing:
-        # Used for development of aw-webui
+        # Used for development of sd-webui
         cors_origins.append("http://127.0.0.1:27180/*")
 
     # TODO: This could probably be more specific
-    #       See https://github.com/ActivityWatch/aw-server/pull/43#issuecomment-386888769
+    #       See https://github.com/ActivityWatch/sd-server/pull/43#issuecomment-386888769
     cors_origins.append("moz-extension://*")
 
     # See: https://flask-cors.readthedocs.org/en/latest/
     CORS(current_app, resources={r"/api/*": {"origins": cors_origins}})
 
 
-# Only to be called from aw_server.main function!
+# Only to be called from sd_server.main function!
 def _start(
     storage_method,
     host: str,

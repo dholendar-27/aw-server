@@ -5,7 +5,7 @@ After=mongodb.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env aw-server
+ExecStart=/usr/bin/env sd-server
 Restart=always
 
 [Install]

@@ -3,8 +3,8 @@
 
 import os
 
-import aw_core
-aw_core_path = os.path.dirname(aw_core.__file__)
+import sd_core
+sd_core_path = os.path.dirname(sd_core.__file__)
 
 import flask_restx
 restx_path = os.path.dirname(flask_restx.__file__)
@@ -16,11 +16,11 @@ a = Analysis(['__main__.py'],
              pathex=[],
              binaries=None,
              datas=[
-                ('aw_server/static', 'aw_server/static'),
+                ('sd_server/static', 'sd_server/static'),
 
                 (os.path.join(restx_path, 'templates'), 'flask_restx/templates'),
                 (os.path.join(restx_path, 'static'), 'flask_restx/static'),
-                (os.path.join(aw_core_path, 'schemas'), 'aw_core/schemas')
+                (os.path.join(sd_core_path, 'schemas'), 'sd_core/schemas')
              ],
             hiddenimports=[
             'reportlab',
@@ -48,7 +48,7 @@ pyz = PYZ(a.pure, a.zipped_data,
 exe = EXE(pyz,
           a.scripts,
           exclude_binaries=True,
-          name='aw-server',
+          name='sd-server',
           debug=False,
           strip=False,
           upx=True,
@@ -59,4 +59,4 @@ coll = COLLECT(exe,
                a.datas,
                strip=False,
                upx=True,
-               name='aw-server')
+               name='sd-server')

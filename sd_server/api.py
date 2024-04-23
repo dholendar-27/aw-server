@@ -9,9 +9,9 @@ from socket import gethostname
 import threading
 import time
 
-from aw_core import db_cache
-from aw_core.cache import cache_user_credentials
-from aw_core.cache import *
+from sd_core import db_cache
+from sd_core.cache import cache_user_credentials
+from sd_core.cache import *
 from typing import (
     Any,
     Callable,
@@ -21,14 +21,14 @@ from typing import (
     Union,
 )
 from uuid import uuid4
-from aw_core.util import decrypt_uuid, encrypt_uuid, load_key, is_internet_connected
+from sd_core.util import decrypt_uuid, encrypt_uuid, load_key, is_internet_connected
 
 import iso8601
-from aw_core.dirs import get_data_dir
-from aw_core.log import get_log_file_path
-from aw_core.models import Event
-from aw_query import query2
-from aw_transform import heartbeat_merge
+from sd_core.dirs import get_data_dir
+from sd_core.log import get_log_file_path
+from sd_core.models import Event
+from sd_query import query2
+from sd_transform import heartbeat_merge
 import keyring
 import pytz
 
@@ -40,7 +40,7 @@ from dateutil import parser
 logger = logging.getLogger(__name__)
 
 def get_device_id() -> str:
-    path = Path(get_data_dir("aw-server")) / "device_id"
+    path = Path(get_data_dir("sd-server")) / "device_id"
     if path.exists():
         with open(path) as f:
             return f.read()
@@ -542,7 +542,7 @@ class ServerAPI:
         buckets = self.db.buckets()
         # Update the last_updated timestamp and duration of each bucket
         for b in buckets:
-            # TODO: Move this code to aw-core?
+            # TODO: Move this code to sd-core?
             last_events = self.db[b].get(limit=1)
             # Update the last_updated timestamp and duration of last_event.
             if len(last_events) > 0:
@@ -594,7 +594,7 @@ class ServerAPI:
         # Export the bucket for the current window.
         for key, value in buckets.items():
             # Export the bucket for the given client.
-            if value["client"] == "aw-watcher-window":
+            if value["client"] == "sd-watcher-window":
                 id_of_client = value["id"]
                 exported_buckets[id_of_client] = self.export_bucket(id_of_client)
         return exported_buckets
@@ -622,7 +622,7 @@ class ServerAPI:
         )
 
         # scrub IDs from events
-        # (otherwise causes weird bugs with no events seemingly imported when importing events exported from aw-server-rust, which contains IDs)
+        # (otherwise causes weird bugs with no events seemingly imported when importing events exported from sd-server-rust, which contains IDs)
         for event in bucket_data["events"]:
             if "id" in event:
                 del event["id"]
@@ -656,7 +656,7 @@ class ServerAPI:
         Create a bucket.
 
         If hostname is "!local", the hostname and device_id will be set from the server info.
-        This is useful for watchers which are known/assumed to run locally but might not know their hostname (like aw-watcher-web).
+        This is useful for watchers which are known/assumed to run locally but might not know their hostname (like sd-watcher-web).
 
         Returns True if successful, otherwise false if a bucket with the given ID already existed.
         """
@@ -835,14 +835,14 @@ class ServerAPI:
 
         Such as:
          - Active application and window title
-           - Example: aw-watcher-window
+           - Example: sd-watcher-window
          - Currently open document/browser tab/playing song
            - Example: wakatime
-           - Example: aw-watcher-web
-           - Example: aw-watcher-spotify
+           - Example: sd-watcher-web
+           - Example: sd-watcher-spotify
          - Is the user active/inactive?
            Send an event on some interval indicating if the user is active or not.
-           - Example: aw-watcher-afk
+           - Example: sd-watcher-afk
 
         Inspired by: https://wakatime.com/developers#heartbeats
         """
