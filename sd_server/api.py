@@ -97,70 +97,12 @@ class ServerAPI:
         self.db = db
         self.testing = testing
         self.last_event = {}  # type: dict
-        self.server_address = "{protocol}://{host}".format(
-            protocol='https', host='ralvie.minervaiotdev.com'
+        self.server_address = "{protocol}://{host}:{port}".format(
+            protocol='http', host='14.97.160.178', port=9010
             # protocol='http', host='localhost:9010'
 
         )
         self.ralvie_server_queue = RalvieServerQueue(self)
-
-    def save_settings(self, code, value) -> None:
-        """
-         Save settings to the database. This is a low - level method for use by plugins that want to save settings to the database as part of their initialization and / or reinitialization.
-
-         @param settings_id - ID of the settings to save.
-         @param settings_dict - Dictionary of settings to save. Keys must match the names of the settings in the dictionary.
-
-         @return True if successful False otherwise. Raises : py : exc : ` ~sqlalchemy. exc. IntegrityError ` if there is a problem
-        """
-        return self.db.save_settings(code=code,value=value)
-
-    def get_settings(self, code) -> Dict[str, Any]:
-        """
-         Retrieve settings from the database. This is a low - level method to be used by plugins that want to retrieve settings from the database.
-
-         @param settings_id - ID of the settings to retrieve.
-
-         @return Dictionary of settings. Keys are the names of the settings
-        """
-        return self.db.retrieve_setting(code=code)
-
-    def retrieve_all_settings(self):
-        return self.db.retrieve_all_settings()
-
-    def update_settings(self,code,value):
-        return self.db.update_settings(code=code,value=value)
-
-    def delete_settings(self,code):
-        return self.db.delete_settings(code=code)
-
-    def save_application_details(self, application_details):
-        try:
-            # Save application details to the database
-            saved_details = self.db.save_application_details(application_details)
-            return saved_details
-        except Exception:
-            # Handle the error
-            return None
-    def get_appication_details(self):
-        return self.db.retrieve_application_details()
-
-    def update_application_details(self, update_details):
-        try:
-            update_details=self.db.update_application_details(update_details)
-            return update_details
-        except Exception:
-            return None
-
-    def delete_application_details(self,application_id):
-        try:
-            delete_app=self.db.delete_application_details(application_id)
-            return delete_app
-        except Exception:
-            return None
-
-    def application_list(self):
-        return self.db.retrieve_application_names()
 
     def _url(self, endpoint: str):
         """
@@ -407,129 +349,6 @@ class ServerAPI:
             logger.error("Error occurred during sync_events_to_ralvie: %s", e)
             return {"status": "error_occurred"}  # Return status in case of exception
 
-    def get_user_credentials(self, userId, token):
-        """
-        Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user '
-
-        @param userId
-        @param token
-        """
-
-        cache_key = "Sundial"
-        endpoint = f"/web/user/{userId}/credentials"
-        user_credentials = self._get(endpoint, {"Authorization": token})
-
-        # This function is used to retrieve the user credentials.
-        if user_credentials.status_code == 200 and json.loads(user_credentials.text)["code"] == 'RCI0000':
-            credentials_data = json.loads(user_credentials.text)["data"]["credentials"]
-            user_data = json.loads(user_credentials.text)["data"]["user"]
-
-            db_key = credentials_data["dbKey"]
-            data_encryption_key = credentials_data["dataEncryptionKey"]
-            user_key = credentials_data["userKey"]
-            email = user_data.get("email", None)
-            phone = user_data.get("phone", None)
-            companyId=user_data.get("companyId",None)
-            firstName = user_data.get("firstName", None)
-            lastName = user_data.get("lastName", None)
-            key = user_key
-            encrypted_db_key = encrypt_uuid(db_key, key)
-            encrypted_data_encryption_key = encrypt_uuid(data_encryption_key, key)
-            encrypted_user_key = encrypt_uuid(user_key, key)
-
-            SD_KEYS = {
-                "user_key": user_key,
-                "encrypted_db_key": encrypted_db_key,
-                "encrypted_data_encryption_key": encrypted_data_encryption_key,
-                "email": email,
-                "phone": phone,
-                "firstname": firstName,
-                "lastname": lastName,
-                "userId": userId,
-                "token" : token,
-                "companyId":companyId,
-            }
-
-            store_credentials(cache_key, SD_KEYS)
-            serialized_data = json.dumps(SD_KEYS)
-            add_password("SD_KEYS", serialized_data)
-
-            cached_credentials = get_credentials(cache_key)
-            key_decoded = cached_credentials.get("user_key")
-
-            decrypted_db_key = decrypt_uuid(encrypted_db_key, key_decoded)
-            decrypted_user_key = decrypt_uuid(encrypted_user_key, key_decoded)
-            decrypted_data_encryption_key = decrypt_uuid(encrypted_data_encryption_key, key_decoded)
-            self.last_event = {}
-
-            print(f"user_key: {decrypted_user_key}")
-            print(f"db_key: {decrypted_db_key}")
-            print(f"watcher_key: {decrypted_data_encryption_key}")
-
-        return user_credentials
-
-    def get_user_by_id(self, token):
-        """
-        Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user '
-
-        @param userId
-        @param token
-        """
-
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
-        user_id = cached_credentials.get("userId")
-
-        endpoint = f"/web/user/{user_id}"
-        user = self._get(endpoint, {"Authorization": token})
-
-        # This function is used to retrieve the user credentials.
-        if user.status_code == 200:
-            return json.loads(user.text)
-        else:
-            return None
-
-    def delete_user_profile_photo(self, token):
-        """
-        Delete profile photo of a user.'
-
-        @param userId
-        @param token
-        """
-
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
-        user_id = cached_credentials.get("userId")
-
-        endpoint = f"/web/user/{user_id}/profile"
-        user = self._delete(endpoint, {}, {"Authorization": token})
-
-        return json.loads(user.text)
-
-    def get_user_details(self):
-        """
-         Get details of user. This is used to populate the Sundial page in the admin.
-
-
-         @return Dictionary that contains email phone firstname and lastname
-        """
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
-
-        image = self.db.retrieve_setting("profilePic")
-        response_data = {"email": cached_credentials.get("email"), "phone": cached_credentials.get("phone"),
-                         "firstname": cached_credentials.get("firstname"),
-                         "lastname": cached_credentials.get("lastname")}
-        # Set the image s profile image
-        if image:
-            response_data['ProfileImage'] = image
-        else:
-            response_data['ProfileImage'] = ""
-        # Return cached credentials if cached credentials are not None.
-        if not cached_credentials is None:
-            return response_data
-
-
     def get_info(self) -> Dict[str, Any]:
         """
          Get information about the server. This is a dictionary that can be sent to the server to update the configuration.
@@ -596,24 +415,6 @@ class ServerAPI:
         # for event in bucket["events"]:
         #     del event["id"]
         return bucket
-
-    def export_all(self) -> Dict[str, Any]:
-        """
-         Exports all buckets and their events to a format consistent across versions. This is useful for exporting a set of data that is stored in Amazon S3 and can be used to make sure they are in the correct format
-
-
-         @return Dictionary of exported buckets
-        """
-        """Exports all buckets and their events to a format consistent across versions"""
-        buckets = self.get_buckets()
-        exported_buckets = {}
-        # Export the bucket for the current window.
-        for key, value in buckets.items():
-            # Export the bucket for the given client.
-            if value["client"] == "sd-watcher-window":
-                id_of_client = value["id"]
-                exported_buckets[id_of_client] = self.export_bucket(id_of_client)
-        return exported_buckets
 
     def import_bucket(self, bucket_data: Any):
         """
@@ -938,27 +739,6 @@ class ServerAPI:
         self.last_event[bucket_id] = heartbeat
         return heartbeat
 
-    def query2(self, name, query, timeperiods, cache):
-        """
-         Queries the database for data. This is the second part of the : meth : ` ~oldman. query ` method.
-
-         @param name - The name of the database to query. This is used to create the query and to access the database in the cache.
-         @param query - The query to be executed. This is a list of strings where each string is a field in the database and each field is a value in the form
-         @param timeperiods
-         @param cache
-        """
-        result = []
-        # Create a query for each timeperiod in the list of timeperiods.
-        for timeperiod in timeperiods:
-            period = timeperiod.split("/")[
-                :2
-            ]  # iso8601 timeperiods are separated by a slash
-            starttime = iso8601.parse_date(period[0])
-            endtime = iso8601.parse_date(period[1])
-            query = "".join(query)
-            result.append(query2.query(name, query, starttime, endtime, self.db))
-        return result
-
     # TODO: Right now the log format on disk has to be JSON, this is hard to read by humans...
     def get_log(self):
         """Get the server log in json format"""
@@ -967,33 +747,6 @@ class ServerAPI:
             for line in log_file.readlines()[::-1]:
                 payload.append(json.loads(line))
         return payload, 200
-
-    def get_dashboard_events(
-        self,
-        start: Optional[datetime] = None,
-        end: Optional[datetime] = None,
-    ) -> List[Event]:
-        events = self.db.get_dashboard_events(starttime=start,endtime=end)
-
-        # groupedEvents = group_events_by_application(events)
-
-        if len(events) > 0:
-            event_start = parser.isoparse(events[0]["timestamp"])
-            start_hour = event_start.hour
-            start_min = event_start.minute
-            start_date_time = event_start
-
-            # Convert events list to JSON object using custom serializer
-            events_json = json.dumps({
-                "events": events,
-                "start_hour": start_hour,
-                "start_min": start_min,
-                "start_date_time": start_date_time,
-                # "groupedEvents" : groupedEvents
-            }, default=datetime_serializer)
-
-            return json.loads(events_json)
-        else: return None
 
     def get_non_sync_events(
         self
@@ -1017,55 +770,6 @@ class ServerAPI:
             return json.loads(events_json)
         else: return None
 
-
-    def get_most_used_apps(
-        self,
-        start: Optional[datetime] = None,
-        end: Optional[datetime] = None,
-    ) -> List[Event]:
-
-        most_used_apps = self.db.get_most_used_apps(starttime=start,endtime=end)
-
-        if len(most_used_apps) > 0:
-            events_json = json.dumps({
-                "most_used_apps" : most_used_apps
-            }, default=datetime_serializer)
-            return json.loads(events_json)
-        else: return None
-
-    @check_bucket_exists
-    def get_formated_events(
-        self,
-        bucket_id: str,
-        limit: int = -1,
-        start: Optional[datetime] = None,
-        end: Optional[datetime] = None,
-    ) -> List[Event]:
-        events = self.db.get_dashboard_events(starttime=start,endtime=end)
-
-        current_date = datetime.now().date()
-        start_of_day = datetime.combine(current_date, datetime.min.time())
-        end_of_day = datetime.combine(current_date, datetime.max.time())
-        most_used_apps = self.db.get_most_used_apps(starttime=start_of_day,endtime=end_of_day)
-
-        if len(events) > 0:
-            event_start = parser.isoparse(events[0]["timestamp"])
-            start_hour = event_start.hour
-            start_min = event_start.minute
-            start_date_time = event_start
-
-            # Convert events list to JSON object using custom serializer
-            events_json = json.dumps({
-                "events": events,
-                "start_hour": start_hour,
-                "start_min": start_min,
-                "start_date_time": start_date_time,
-                "most_used_apps" : most_used_apps
-            }, default=datetime_serializer)
-
-            return json.loads(events_json)
-        else: return None
-
 def datetime_serializer(obj):
     """
      Serialize datetime to ISO format. This is used to ensure that dates are converted to ISO format before saving to the database.
@@ -1077,66 +781,6 @@ def datetime_serializer(obj):
     # Return the ISO 8601 format of the object.
     if isinstance(obj, datetime):
         return obj.isoformat()
-
-
-
-
-def event_filter(most_used_apps,data):
-    """
-        Filter events to include only those that don't have lock apps or login windows
-
-        @param most_used_apps - list of apps that are most used
-        @param data - list of events from json file that we want to filter
-
-        @return a list of formatted events for use in event_
-    """
-
-    # Convert data to JSON object.
-    if (
-        isinstance(data, list)
-        and len(data) > 0
-    ):
-        events = sorted(data, key=lambda x: parser.isoparse(x["timestamp"]).timestamp())
-        formated_events = []
-        start_date_time = None
-        start_hour = 24
-        start_min = 59
-
-        # This function will add events to the event list
-        for e in events:
-            # This function is called by the app when the event is triggered.
-            if not "LockApp" in e['data']['app'] and not "loginwindow" in e['data']['app']:
-                event_start = parser.isoparse(e["timestamp"])
-                event_end = event_start + timedelta(seconds=e["duration"])
-                # color = getRandomColorVariants()  # Assuming you have this function implemented
-
-                new_event = {
-                    **e,
-                    "start": event_start.isoformat(),
-                    "end": event_end.isoformat(),
-                    "event_id": e["id"],
-                    "title": e["data"].get("title", ""),
-                    # "light": color["light"],
-                    # "dark": color["dark"],
-                }
-                formated_events.append(new_event)
-
-                # Set the start time of the event.
-                if start_hour > event_start.hour or (start_hour == event_start.hour and start_min > event_start.minute):
-                    start_hour = event_start.hour
-                    start_min = event_start.minute
-                    start_date_time = event_start
-
-        # Convert events list to JSON object using custom serializer
-        events_json = json.dumps({
-            "events": formated_events,
-            "start_hour": start_hour,
-            "start_min": start_min,
-            "start_date_time": start_date_time,
-            "most_used_apps" : most_used_apps
-        }, default=datetime_serializer)
-
-        return json.loads(events_json)  # Parse the JSON string to a Python object
 
 class RalvieServerQueue(threading.Thread):
     def __init__(self, server: ServerAPI) -> None:
@@ -1183,41 +827,6 @@ class RalvieServerQueue(threading.Thread):
                 print("Connected to internet")
                 self.server.sync_events_to_ralvie()
                 time.sleep(300)
-
-def group_events_by_application(events):
-    grouped_events = {}
-
-    for event in events:
-        timestamp = datetime.fromisoformat(event["start"])
-        rounded_timestamp = timestamp - timedelta(minutes=timestamp.minute % 30, seconds=timestamp.second, microseconds=timestamp.microsecond)
-        key = (event["application_name"], rounded_timestamp)
-
-        if key not in grouped_events:
-            grouped_events[key] = {
-                "application_name": event["application_name"],
-                "start": rounded_timestamp.isoformat() + "Z",
-                "end": rounded_timestamp + timedelta(minutes=30),
-                "total_duration": 0,
-                "events": []
-            }
-
-        grouped_events[key]["total_duration"] += event["duration"]
-        grouped_events[key]["events"].append({
-            "event_id": event["event_id"],
-            "duration": event["duration"],
-            "timestamp": event["timestamp"],
-            "data": event["data"],
-            "id": event["id"],
-            "bucket_id": event["bucket_id"],
-            "app": event["app"],
-            "title": event["title"],
-            "url": event["url"]
-        })
-
-    # Flatten the nested structure into a single list
-    result_list = list(grouped_events.values())
-
-    return result_list
 
 
 

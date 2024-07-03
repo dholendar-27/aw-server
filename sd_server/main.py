@@ -50,9 +50,7 @@ def main():
         testing=settings.testing,
         storage_method=storage_method,
         cors_origins=settings.cors_origins,
-        custom_static=settings.custom_static,
     )
-
 
 def parse_settings():
     """

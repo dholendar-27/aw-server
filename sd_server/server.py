@@ -16,13 +16,9 @@ from flask_cors import CORS
 
 from . import rest
 from .api import ServerAPI
-from .custom_static import get_custom_static_blueprint
 from .log import FlaskLogHandler
 
 logger = logging.getLogger(__name__)
-
-app_folder = os.path.dirname(os.path.abspath(__file__))
-static_folder = os.path.join(app_folder, "static")
 
 root = Blueprint("root", __name__, url_prefix="/")
 
@@ -34,8 +30,6 @@ class AWFlask(Flask):
         testing: bool,
         storage_method=None,
         cors_origins=[],
-        custom_static=dict(),
-        static_folder=static_folder,
         static_url_path="",
     ):
         """
@@ -58,12 +52,9 @@ class AWFlask(Flask):
         Flask.__init__(
             self,
             name,
-            static_folder=static_folder,
             static_url_path=static_url_path,
         )
         self.config["HOST"] = host  # needed for host-header check
-        with self.app_context():
-            _config_cors(cors_origins, testing)
 
         # Initialize datastore and API
         # Get the storage method for the datastore.
@@ -100,79 +91,6 @@ class CustomJSONProvider(flask.json.provider.DefaultJSONProvider):
         return super().default(obj)
 
 
-@root.route("/")
-def static_root():
-    """
-     Serve static root page. This is used to serve static root page for application. You can use it in templates or any other way that you want to serve static root page.
-
-
-     @return Response from server or None if request is not responded to by client or server side error ( 404
-    """
-    return current_app.send_static_file("index.html")
-
-@root.route("/pages/<path:path>")
-def static_home_root(path):
-    """
-     Serve static home root. This is the root of the application's static files. By default it is the index. html page
-
-     @param path - path to the static root
-
-     @return response to the static root page with no Content - Type header set to application / x - www - form - urlencoded
-    """
-    return current_app.send_static_file("index.html")
-
-
-@root.route("/css/<path:path>")
-def static_css(path):
-    """
-     Send static CSS to client. This is a shortcut for : func : ` send_from_directory `
-
-     @param path - Path to css file.
-
-     @return HTML response from server or None if error occured ( 404 not found ). Example usage :. from werkzeug import static_
-    """
-    return send_from_directory(static_folder + "/css", path)
-
-
-@root.route("/js/<path:path>")
-def static_js(path):
-    """
-     Send static javascript to client. This is a shortcut for : func : ` send_from_directory `
-
-     @param path - Path to file relative to static folder
-
-     @return String of javascript to be sent to client Example :. from werkzeug. ext. http import static_
-    """
-    return send_from_directory(static_folder + "/js", path)
-
-
-def _config_cors(cors_origins: List[str], testing: bool):
-    """
-     Configure CORS to allow cross - origin requests. This is a helper function for _config_exameters which can be used to add additional origins to the CORS configuration
-
-     @param cors_origins - List of origins to allow
-     @param testing - If True will use HTTP and HTTPS instead of
-    """
-    # This method is called by the CLI to check if CORS origins are specified through config or CLI arguments.
-    if cors_origins:
-        logger.warning(
-            "Running with additional allowed CORS origins specified through config "
-            "or CLI argument (could be a security risk): {}".format(cors_origins)
-        )
-
-    # Use this method to add CORS origins to the CORS_origins list.
-    if testing:
-        # Used for development of sd-webui
-        cors_origins.append("http://127.0.0.1:27180/*")
-
-    # TODO: This could probably be more specific
-    #       See https://github.com/ActivityWatch/sd-server/pull/43#issuecomment-386888769
-    cors_origins.append("moz-extension://*")
-
-    # See: https://flask-cors.readthedocs.org/en/latest/
-    CORS(current_app, resources={r"/api/*": {"origins": cors_origins}})
-
-
 # Only to be called from sd_server.main function!
 def _start(
     storage_method,
@@ -180,7 +98,6 @@ def _start(
     port: int,
     testing: bool = False,
     cors_origins: List[str] = [],
-    custom_static: Dict[str, str] = dict(),
 ):
     """
      Start the Flask application. This is a wrapper around AWFlask to allow us to run in a subprocess
@@ -197,9 +114,7 @@ def _start(
         testing=testing,
         storage_method=storage_method,
         cors_origins=cors_origins,
-        custom_static=custom_static,
     )
-    webbrowser.open("http://"+ host+ ":" + str(port))
     try:
         app.run(
             debug=testing,
