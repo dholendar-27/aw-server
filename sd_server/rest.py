@@ -6,6 +6,7 @@ from typing import Dict
 import sys
 import pytz
 from dateutil.parser import parse
+from dateutil import parser
 from sd_core.launch_start import delete_launch_app, launch_app, check_startup_status, set_autostart_registry
 from sd_core.util import authenticate, is_internet_connected, reset_user
 import pandas as pd
@@ -718,7 +719,13 @@ class EventResource(Resource):
         )
         success = current_app.api.delete_event(bucket_id, event_id)
         return {"success": success}, 200
-
+    
+def time_in_range(start, end, x):
+    """Return true if x is in the range [start, end]"""
+    if start <= end:
+        return start <= x <= end
+    else:
+        return start <= x or x <= end
 
 @api.route("/0/buckets/<string:bucket_id>/heartbeat")
 class HeartbeatResource(Resource):
@@ -741,88 +748,92 @@ class HeartbeatResource(Resource):
         @return 200 OK if heartbeats were sent 400 Bad Request if there is no credentials in
         """
         heartbeat_data = request.get_json()
-        if heartbeat_data['data']['title']=='':
-            heartbeat_data['data']['title']=heartbeat_data['data']['app']
+        pause_watcher_start = datetime.strptime(current_app.api.get_settings('pause_watcher')['start_time'], "%Y-%m-%dT%H:%M:%S")
+        pause_watcher_end = datetime.strptime(current_app.api.get_settings('pause_watcher')['end_time'], "%Y-%m-%dT%H:%M:%S")
+        if time_in_range(pause_watcher_start, pause_watcher_end, datetime.now()) == False:
+            
+            if heartbeat_data['data']['title']=='':
+                heartbeat_data['data']['title']=heartbeat_data['data']['app']
 
-        if heartbeat_data['data']['app'] in ['ApplicationFrameHost.exe']:
-            heartbeat_data['data']['app'] = heartbeat_data['data']['title'] + '.exe'
+            if heartbeat_data['data']['app'] in ['ApplicationFrameHost.exe']:
+                heartbeat_data['data']['app'] = heartbeat_data['data']['title'] + '.exe'
 
-        # Set default title using the value of 'app' attribute if it's not present in the data dictionary
-        settings = db_cache.retrieve("settings_cache")
-        if not settings:
-            db_cache.store("settings_cache",current_app.api.retrieve_all_settings())
-        settings_code = settings.get("weekdays_schedule",{})
-        schedule = settings.get("schedule",{})
+            # Set default title using the value of 'app' attribute if it's not present in the data dictionary
+            settings = db_cache.retrieve("settings_cache")
+            if not settings:
+                db_cache.store("settings_cache",current_app.api.retrieve_all_settings())
+            settings_code = settings.get("weekdays_schedule",{})
+            schedule = settings.get("schedule",{})
 
-        true_week_values = [key.lower() for key, value in settings_code.items() if value is True]
+            true_week_values = [key.lower() for key, value in settings_code.items() if value is True]
 
-        if settings_code.get("starttime") and settings_code.get("endtime"):
+            if settings_code.get("starttime") and settings_code.get("endtime"):
+                try:
+                    # Assuming the times are in 24-hour format
+                    start_time_str = settings_code.get("starttime")
+                    end_time_str = settings_code.get("endtime")
+
+                    # Adjust the format string to match the time format
+                    time_format = "%H:%M"  # 24-hour format
+
+                    # Get the current date
+                    current_date = datetime.now().date()
+                    day_name = current_date.strftime("%A")
+
+                    # Combine date with start and end times directly
+                    local_start_time = datetime.strptime(f"{current_date} {start_time_str}", f"%Y-%m-%d {time_format}")
+                    local_end_time = datetime.strptime(f"{current_date} {end_time_str}", f"%Y-%m-%d {time_format}")
+
+                    # Now local_start_time is a datetime object, you can use astimezone method
+                    start_utc_time = local_start_time.astimezone(pytz.utc)
+                    end_utc_time = local_end_time.astimezone(pytz.utc)
+
+
+                except json.JSONDecodeError:
+                    logger.info("Error: Failed to decode JSON string")
+                except ValueError as e:
+                    logger.error(f"Error: {e}")
+
+            # Check if schedule is true and contains weekdays
+            current_time_utc = datetime.now(pytz.utc)
+
+            if schedule and (day_name.lower() in true_week_values) and not (start_utc_time <= current_time_utc <= end_utc_time):
+                return {"message": "Skipping data capture."}, 200
+                # Capture data
+            heartbeat = Event(**heartbeat_data)
+
+            cache_key = "Sundial"
+            cached_credentials = cache_user_credentials("SD_KEYS")
+            # Returns cached credentials if cached credentials are not cached.
+            if cached_credentials is None:
+                return {"message": "No cached credentials."}, 400
+
+            # The pulsetime parameter is required.
+            pulsetime = float(request.args["pulsetime"]) if "pulsetime" in request.args else None
+            if pulsetime is None:
+                return {"message": "Missing required parameter pulsetime"}, 400
+
+            # This lock is meant to ensure that only one heartbeat is processed at a time,
+            # as the heartbeat function is not thread-safe.
+            # This should maybe be moved into the api.py file instead (but would be very messy).
+            if not self.lock.acquire(timeout=1):
+                logger.warning(
+                    "Heartbeat lock could not be acquired within a reasonable time, this likely indicates a bug."
+                )
+                return {"message": "Failed to acquire heartbeat lock."}, 500
             try:
-                # Assuming the times are in 24-hour format
-                start_time_str = settings_code.get("starttime")
-                end_time_str = settings_code.get("endtime")
+                event = current_app.api.heartbeat(bucket_id, heartbeat, pulsetime)
+            finally:
+                self.lock.release()
 
-                # Adjust the format string to match the time format
-                time_format = "%H:%M"  # 24-hour format
-
-                # Get the current date
-                current_date = datetime.now().date()
-                day_name = current_date.strftime("%A")
-
-                # Combine date with start and end times directly
-                local_start_time = datetime.strptime(f"{current_date} {start_time_str}", f"%Y-%m-%d {time_format}")
-                local_end_time = datetime.strptime(f"{current_date} {end_time_str}", f"%Y-%m-%d {time_format}")
-
-                # Now local_start_time is a datetime object, you can use astimezone method
-                start_utc_time = local_start_time.astimezone(pytz.utc)
-                end_utc_time = local_end_time.astimezone(pytz.utc)
-
-
-            except json.JSONDecodeError:
-                logger.info("Error: Failed to decode JSON string")
-            except ValueError as e:
-                logger.error(f"Error: {e}")
-
-        # Check if schedule is true and contains weekdays
-        current_time_utc = datetime.now(pytz.utc)
-
-        if schedule and (day_name.lower() in true_week_values) and not (start_utc_time <= current_time_utc <= end_utc_time):
-            return {"message": "Skipping data capture."}, 200
-            # Capture data
-        heartbeat = Event(**heartbeat_data)
-
-        cache_key = "Sundial"
-        cached_credentials = cache_user_credentials("SD_KEYS")
-        # Returns cached credentials if cached credentials are not cached.
-        if cached_credentials is None:
-            return {"message": "No cached credentials."}, 400
-
-        # The pulsetime parameter is required.
-        pulsetime = float(request.args["pulsetime"]) if "pulsetime" in request.args else None
-        if pulsetime is None:
-            return {"message": "Missing required parameter pulsetime"}, 400
-
-        # This lock is meant to ensure that only one heartbeat is processed at a time,
-        # as the heartbeat function is not thread-safe.
-        # This should maybe be moved into the api.py file instead (but would be very messy).
-        if not self.lock.acquire(timeout=1):
-            logger.warning(
-                "Heartbeat lock could not be acquired within a reasonable time, this likely indicates a bug."
-            )
-            return {"message": "Failed to acquire heartbeat lock."}, 500
-        try:
-            event = current_app.api.heartbeat(bucket_id, heartbeat, pulsetime)
-        finally:
-            self.lock.release()
-
-        if event:
-            return event.to_json_dict(), 200
-        elif not event:
-            return "event not occured"
+            if event:
+                return event.to_json_dict(), 200
+            elif not event:
+                return "event not occured"
+            else:
+                return {"message": "Heartbeat failed."}, 500
         else:
-            return {"message": "Heartbeat failed."}, 500
-
-
+            return {"message": "Heartbeat has been paused"}, 500
 
 
 # QUERY
@@ -1445,3 +1456,43 @@ class initdb(Resource):
 class server_status(Resource):
     def get(self):
         return 200
+
+
+# SaveSettings search for this method to understand saving settings
+
+@api.route("/0/pause_watcher")
+class pause_watcher(Resource):
+    @copy_doc(ServerAPI.save_settings)
+    @api.doc(security="Bearer")
+    def post(self):
+        """
+        Method to save pause watcher timings in settings to stop the watcher for the specified timings.
+        """
+        data = request.get_json()
+        value_json = data.get('pause') if data else None
+
+        if not value_json:
+            return {"message": "No settings provided"}, 400
+
+        start, end = map(parser.isoparse, (value_json.get('start_time'), value_json.get('end_time')))
+
+        if not start or not end:
+            return {"message": "Start and end time must be provided."}, 400
+
+        if start >= end or start <= datetime.now():
+            return {"message": "Invalid pause timings. Start time cannot be after end time or before the current time."}, 401
+
+        # Retrieve existing pause timings once
+        existing_pause = current_app.api.get_settings('pause_watcher')
+        existing_pause_start, existing_pause_end = map(parser.isoparse, (existing_pause['start_time'], existing_pause['end_time']))
+
+        if any(time_in_range(start, end, t) for t in (existing_pause_start, existing_pause_end)):
+            return {"message": "Given timings overlap with existing timings. Please adjust the time."}, 401
+
+        # Save settings and return result
+        result = current_app.api.save_settings(code='pause_watcher', value=value_json)
+        
+        return {
+            "id": result.id,
+            "code": result.value
+        }, 200
