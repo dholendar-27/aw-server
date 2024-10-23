@@ -230,7 +230,6 @@ class UserResource(Resource):
 
          @return a dictionary containing the user's details and a boolean indicating if the user was
         """
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         # If internet connection is not connected to internet and try again.
         if not is_internet_connected():
@@ -338,7 +337,6 @@ class LoginResource(Resource):
          @return Response code and JSON
         """
         data = request.get_json()
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         user_key = cached_credentials.get("user_key")
 
@@ -362,7 +360,6 @@ class LoginResource(Resource):
          @return 200 if user exist 401 if user does not exist
         """
         data = request.get_json()
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         # Returns the encrypted_db_key if the cached credentials are cached.
         if cached_credentials is not None:
@@ -386,7 +383,6 @@ class RalvieLoginResource(Resource):
 
          @return A JSON with the result of the authentication and user
         """
-        cache_key = "Sundial"
         refresh_token = ""
         # Check Internet Connectivity
         response_data = {}
@@ -1271,7 +1267,6 @@ class User(Resource):
 
          @return JSON with firstname lastname and email or False if not
         """
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         user_key = cached_credentials.get(
             "encrypted_db_key") if cached_credentials else None

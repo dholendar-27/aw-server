@@ -109,7 +109,6 @@ class ServerAPI:
         :param testing: True if we are testing, False otherwise.
         :return: None
         """
-        cache_key = "Sundial"
         cache_user_credentials("SD_KEYS")
         self.db = db
         self.testing = testing
@@ -117,7 +116,7 @@ class ServerAPI:
 
         # Configure server address.
         protocol = 'https'
-        host = 'ralvie.minervaiotdev.com'
+        host = 'ralvie.minervaiotstaging.com'
         self.server_address = f"{protocol}://{host}"
 
         # Initialize the RalvieServerQueue for handling background sync tasks.
@@ -359,7 +358,7 @@ class ServerAPI:
 
 
     def update_user_profile(self, access_token, file):
-        cache_key = "Sundial"
+        cache_key = "SD_KEYS"
         cached_credentials = get_credentials(cache_key)
         user_id = cached_credentials.get("userId")
         if user_id:
@@ -442,14 +441,13 @@ class ServerAPI:
         @param token: Authorization token
         """
 
-        cache_key = "Sundial"
         endpoint = f"/web/user/{userId}/credentials"
         user_credentials = self._get(endpoint, {"Authorization": token})
 
         if user_credentials.status_code == 200 and json.loads(user_credentials.text)["code"] == 'RCI0000':
             credentials_data = json.loads(user_credentials.text)["data"]["credentials"]
             user_data = json.loads(user_credentials.text)["data"]["user"]
-
+            print(user_data,credentials_data)
             # Clear the cache and keychain only for the relevant service key (SD_KEYS)
             clear_credentials("SD_KEYS")
             delete_password("SD_KEYS")
@@ -505,7 +503,7 @@ class ServerAPI:
         @param token
         """
 
-        cache_key = "Sundial"
+        cache_key = "SD_KEYS"
         cached_credentials = get_credentials(cache_key)
         user_id = cached_credentials.get("userId")
 
@@ -526,7 +524,7 @@ class ServerAPI:
         @param token
         """
 
-        cache_key = "Sundial"
+        cache_key = "SD_KEYS"
         cached_credentials = get_credentials(cache_key)
         user_id = cached_credentials.get("userId")
 
@@ -542,7 +540,7 @@ class ServerAPI:
 
          @return Dictionary that contains email phone firstname and lastname
         """
-        cache_key = "Sundial"
+        cache_key = "SD_KEYS"
         cached_credentials = get_credentials(cache_key)
 
         image = self.db.retrieve_setting("profilePic")
@@ -1175,7 +1173,7 @@ class RalvieServerQueue(threading.Thread):
 
     def _try_connect(self) -> bool:
         try:
-            cache_key = "Sundial"
+            cache_key = "SD_KEYS"
             cached_credentials = cache_user_credentials(cache_key)
             if cached_credentials:
                 db_key = cached_credentials.get("encrypted_db_key")
