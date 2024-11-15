@@ -103,7 +103,6 @@ api = Api(blueprint, doc="/",
 # Loads event and bucket schema from JSONSchema in sd_core
 event = api.schema_model("Event", schema.get_json_schema("event"))
 bucket = api.schema_model("Bucket", schema.get_json_schema("bucket"))
-buckets_export = api.schema_model("Export", schema.get_json_schema("export"))
 
 # TODO: Construct all the models from JSONSchema?
 #       A downside to contructing from JSONSchema: flask-restplus does not have marshalling support
@@ -230,7 +229,6 @@ class UserResource(Resource):
 
          @return a dictionary containing the user's details and a boolean indicating if the user was
         """
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         # If internet connection is not connected to internet and try again.
         if not is_internet_connected():
@@ -338,7 +336,6 @@ class LoginResource(Resource):
          @return Response code and JSON
         """
         data = request.get_json()
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         user_key = cached_credentials.get("user_key")
 
@@ -362,7 +359,6 @@ class LoginResource(Resource):
          @return 200 if user exist 401 if user does not exist
         """
         data = request.get_json()
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         # Returns the encrypted_db_key if the cached credentials are cached.
         if cached_credentials is not None:
@@ -386,7 +382,6 @@ class RalvieLoginResource(Resource):
 
          @return A JSON with the result of the authentication and user
         """
-        cache_key = "Sundial"
         refresh_token = ""
         # Check Internet Connectivity
         response_data = {}
@@ -890,21 +885,6 @@ def blocked_list():
 # TODO: Perhaps we don't need this, could be done with a query argument to /0/export instead
 
 
-@api.route("/0/buckets/<string:bucket_id>/export")
-class BucketExportResource(Resource):
-    @api.doc(model=buckets_export)
-    @copy_doc(ServerAPI.export_bucket)
-    def get(self, bucket_id):
-        bucket_export = current_app.api.export_bucket(bucket_id)
-        payload = {"buckets": {bucket_export["id"]: bucket_export}}
-        response = make_response(json.dumps(payload))
-        filename = "sd-bucket-export_{}.json".format(bucket_export["id"])
-        response.headers["Content-Disposition"] = "attachment; filename={}".format(
-            filename
-        )
-        return response
-
-
 @api.route("/0/user_details")
 class UserDetails(Resource):
     @copy_doc(ServerAPI.get_user_details)
@@ -917,33 +897,6 @@ class UserDetails(Resource):
         """
         user_details = current_app.api.get_user_details()
         return user_details
-
-
-@api.route("/0/import")
-class ImportAllResource(Resource):
-    @api.expect(buckets_export)
-    @copy_doc(ServerAPI.import_all)
-    def post(self):
-        """
-         Import buckets from json file or POST request. This is a REST API call
-
-
-         @return 200 if successful 400 if
-        """
-        # If import comes from a form in th web-ui
-        # Upload multiple files to the server.
-        if len(request.files) > 0:
-            # web-ui form only allows one file, but technically it's possible to
-            # upload multiple files at the same time
-            # Import all buckets from the request.
-            for filename, f in request.files.items():
-                buckets = json.loads(f.stream.read())["buckets"]
-                current_app.api.import_all(buckets)
-        # Normal import from body
-        else:
-            buckets = request.get_json()["buckets"]
-            current_app.api.import_all(buckets)
-        return None, 200
 
 
 # LOGGING
@@ -972,14 +925,7 @@ class SaveSettings(Resource):
                 result = current_app.api.save_settings(
                     code=code, value=value_json)
 
-                # Prepare response dictionary
-                result_dict = {
-                    "id": result.id,  # Assuming id is the primary key of SettingsModel
-                    "code": result.code,
-                    "value": value_json  # Use the converted value
-                }
-
-                return result_dict, 200  # Return the result dictionary with a 200 status code
+                return result, 200  # Return the result dictionary with a 200 status code
             else:
                 # Handle the case where 'code' or 'value' is missing in the JSON body
                 return {"message": "Both 'code' and 'value' must be provided"}, 400
@@ -1038,11 +984,12 @@ class GetAllSettings(Resource):
         """
         Get settings. This is a GET request to /0/getsettings/{code}.
         """
-        settings_dict = db_cache.cache_data("settings_cache")
+        settings_dict = db_cache.retrieve("settings_cache")
+
         if settings_dict is None:
-            db_cache.cache_data(
+            db_cache.store(
                 "settings_cache", current_app.api.retrieve_all_settings())
-            settings_dict = db_cache.cache_data("settings_cache")
+            settings_dict = db_cache.retrieve("settings_cache")
 
         return settings_dict
 
@@ -1271,7 +1218,6 @@ class User(Resource):
 
          @return JSON with firstname lastname and email or False if not
         """
-        cache_key = "Sundial"
         cached_credentials = cache_user_credentials("SD_KEYS")
         user_key = cached_credentials.get(
             "encrypted_db_key") if cached_credentials else None
