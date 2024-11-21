@@ -110,14 +110,14 @@ class ServerAPI:
         :return: None
         """
         cache_key = "Sundial"
-        cache_user_credentials("SD_KEYS")
+        cache_user_credentials(cache_key)
         self.db = db
         self.testing = testing
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
         # Configure server address.
         protocol = 'https'
-        host = 'ralvie.minervaiotdev.com'
+        host = 'ralvie.minervaiotstaging.com'
         self.server_address = f"{protocol}://{host}"
 
         # Initialize the RalvieServerQueue for handling background sync tasks.
@@ -394,8 +394,9 @@ class ServerAPI:
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
-            cache_key = "SD_KEYS"
+            cache_key = "Sundial"
             cached_credentials = get_credentials(cache_key)
+            print(cached_credentials)
             companyId = cached_credentials.get('companyId')
             token = cached_credentials.get('token')
 
@@ -408,6 +409,7 @@ class ServerAPI:
                 return {"status": "NoEvents"}
 
             events = data.get("events", [])
+            print(events)
             if events:
                 payload = {"userId": userId, "companyId": companyId, "events": events}
                 endpoint = "/web/event"
@@ -483,14 +485,14 @@ class ServerAPI:
             }
 
             # Update the cache first
-            store_credentials("SD_KEYS", SD_KEYS)
+            store_credentials("Sundial", SD_KEYS)
 
             # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            status = add_password("SD_KEYS", serialized_data)
+            status = add_password("Sundial", serialized_data)
             print(status)
             # Retrieve the cached credentials to confirm they were updated
-            cached_credentials = get_credentials("SD_KEYS")
+            cached_credentials = get_credentials("Sundial")
             if cached_credentials:
                 key_decoded = cached_credentials.get("user_key")
                 self.last_event = {}
@@ -1176,7 +1178,8 @@ class RalvieServerQueue(threading.Thread):
     def _try_connect(self) -> bool:
         try:
             cache_key = "Sundial"
-            cached_credentials = cache_user_credentials(cache_key)
+            cached_credentials = cache_user_credentials("Sundial")
+            print(cached_credentials)
             if cached_credentials:
                 db_key = cached_credentials.get("encrypted_db_key")
                 user_key = load_key("user_key")

@@ -9,8 +9,7 @@ import pytz
 from dateutil.parser import parse
 from sd_core.launch_start import delete_launch_app, launch_app, check_startup_status, set_autostart_registry
 from sd_core.util import authenticate, is_internet_connected, reset_user
-import pandas as pd
-from datetime import datetime, timedelta, date, time
+from datetime import datetime, timedelta
 import iso8601
 from sd_core import schema, db_cache
 from sd_core.models import Event
@@ -20,7 +19,6 @@ from flask import (
     Blueprint,
     current_app,
     jsonify,
-    make_response,
     request,
 )
 from flask_restx import Api, Resource, fields
@@ -229,7 +227,7 @@ class UserResource(Resource):
 
          @return a dictionary containing the user's details and a boolean indicating if the user was
         """
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials("Sundial")
         # If internet connection is not connected to internet and try again.
         if not is_internet_connected():
             print("Please connect to internet and try again.")
@@ -336,7 +334,7 @@ class LoginResource(Resource):
          @return Response code and JSON
         """
         data = request.get_json()
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials("Sundial")
         user_key = cached_credentials.get("user_key")
 
         # Returns a JSON object with the user_key data.
@@ -359,7 +357,7 @@ class LoginResource(Resource):
          @return 200 if user exist 401 if user does not exist
         """
         data = request.get_json()
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials("Sundial")
         # Returns the encrypted_db_key if the cached credentials are cached.
         if cached_credentials is not None:
             user_key = cached_credentials.get("encrypted_db_key")
@@ -412,7 +410,7 @@ class RalvieLoginResource(Resource):
         # Returns a JSON response with the user credentials.
         if auth_result.status_code == 200 and json.loads(auth_result.text)["code"] == 'UASI0011':
             # Retrieve Cached User Credentials
-            cached_credentials = cache_user_credentials("SD_KEYS")
+            cached_credentials = cache_user_credentials("Sundial")
             token = json.loads(auth_result.text)["data"]["access_token"]
             # Get the User Key
             user_key = cached_credentials.get(
@@ -434,10 +432,10 @@ class RalvieLoginResource(Resource):
             # Generate JWT
             payload = {
                 "user": getpass.getuser(),
-                "email": cache_user_credentials("SD_KEYS").get("email"),
-                "phone": cache_user_credentials("SD_KEYS").get("phone"),
+                "email": cache_user_credentials("Sundial").get("email"),
+                "phone": cache_user_credentials("Sundial").get("phone"),
             }
-            encoded_jwt = jwt.encode(payload, cache_user_credentials("SD_KEYS").get("user_key"),
+            encoded_jwt = jwt.encode(payload, cache_user_credentials("Sundial").get("user_key"),
                                      algorithm="HS256")
 
             # Response
@@ -789,7 +787,7 @@ class HeartbeatResource(Resource):
 
         # Proceed with heartbeat processing
         heartbeat = Event(**heartbeat_data)
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials("Sundial")
 
         if cached_credentials is None:
             return {"message": "No cached credentials."}, 400
@@ -1218,7 +1216,7 @@ class User(Resource):
 
          @return JSON with firstname lastname and email or False if not
         """
-        cached_credentials = cache_user_credentials("SD_KEYS")
+        cached_credentials = cache_user_credentials("Sundial")
         user_key = cached_credentials.get(
             "encrypted_db_key") if cached_credentials else None
         # Returns a JSON response with the user s credentials.
