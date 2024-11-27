@@ -1,14 +1,8 @@
 import functools
-from itertools import groupby
-import json
-import logging
 from datetime import datetime, timedelta, timezone
-import os
 from pathlib import Path
 from socket import gethostname
 import threading
-import time
-
 from sd_core import db_cache
 from sd_core.cache import cache_user_credentials
 from sd_core.cache import *
@@ -21,17 +15,13 @@ from typing import (
     Union,
 )
 from uuid import uuid4
-from sd_core.util import decrypt_uuid, encrypt_uuid, load_key, is_internet_connected
-
+from sd_core.util import encrypt_uuid, load_key, is_internet_connected
 import iso8601
 from sd_core.dirs import get_data_dir
 from sd_core.log import get_log_file_path
 from sd_core.models import Event
 from sd_query import query2
 from sd_transform import heartbeat_merge
-import keyring
-import pytz
-
 from .__about__ import __version__
 from .exceptions import NotFound
 import requests as req
@@ -40,6 +30,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
+
+CACHE_KEY = "Sundial"
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +101,7 @@ class ServerAPI:
         :param testing: True if we are testing, False otherwise.
         :return: None
         """
-        cache_key = "Sundial"
-        cache_user_credentials("SD_KEYS")
+        cache_user_credentials(CACHE_KEY)
         self.db = db
         self.testing = testing
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
@@ -359,8 +350,8 @@ class ServerAPI:
 
 
     def update_user_profile(self, access_token, file):
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
+
+        cached_credentials = get_credentials(CACHE_KEY)
         user_id = cached_credentials.get("userId")
         if user_id:
             endpoint = f"/web/user/{user_id}/profile"
@@ -394,8 +385,7 @@ class ServerAPI:
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
-            cache_key = "SD_KEYS"
-            cached_credentials = get_credentials(cache_key)
+            cached_credentials = get_credentials(CACHE_KEY)
             companyId = cached_credentials.get('companyId')
             token = cached_credentials.get('token')
 
@@ -441,8 +431,6 @@ class ServerAPI:
         @param userId: User ID
         @param token: Authorization token
         """
-
-        cache_key = "Sundial"
         endpoint = f"/web/user/{userId}/credentials"
         user_credentials = self._get(endpoint, {"Authorization": token})
 
@@ -451,8 +439,8 @@ class ServerAPI:
             user_data = json.loads(user_credentials.text)["data"]["user"]
 
             # Clear the cache and keychain only for the relevant service key (SD_KEYS)
-            clear_credentials("SD_KEYS")
-            delete_password("SD_KEYS")
+            clear_credentials(CACHE_KEY)
+            delete_password(CACHE_KEY)
 
             # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
@@ -483,14 +471,14 @@ class ServerAPI:
             }
 
             # Update the cache first
-            store_credentials("SD_KEYS", SD_KEYS)
+            store_credentials(CACHE_KEY, SD_KEYS)
 
             # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            status = add_password("SD_KEYS", serialized_data)
+            status = add_password(CACHE_KEY, serialized_data)
             print(status)
             # Retrieve the cached credentials to confirm they were updated
-            cached_credentials = get_credentials("SD_KEYS")
+            cached_credentials = get_credentials(CACHE_KEY)
             if cached_credentials:
                 key_decoded = cached_credentials.get("user_key")
                 self.last_event = {}
