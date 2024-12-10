@@ -1219,11 +1219,11 @@ class idletime(Resource):
         """
         module = manager.module_status("aw-watcher-afk")
         if module["is_alive"]:
-            manager.stop("aw-watcher-afk")
+            manager.stop("sd-watcher-afk")
             message = "idle time has stoppped"
             state = False
         else:
-            manager.start("aw-watcher-afk")
+            manager.start("sd-watcher-afk")
             message = "idle time has started"
             state = True
         print(message)
