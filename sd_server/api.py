@@ -39,9 +39,60 @@ from dateutil import parser
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import configparser
+# from sd_server.configuration import protocol_, host_
+import os
+import sys
+
+import socketio
+
+
+# Initialize the Socket.IO client
+sio = socketio.Client()
+
+try:
+    sio.connect("http://localhost:7300")
+    print("Connected to appB WebSocket server!")
+except Exception as e:
+    print(f"Failed to connect to appB WebSocket server: {e}")
+
+
+# Function to send data to appB
+def send_data_to_appB(data):
+    if sio.connected:
+        sio.emit("data_from_appA", data)  # Emit the data to appB
+        print("Data sent to appB:", data)
+    else:
+        print("WebSocket connection not available.")
+
+def get_config_path():
+    if getattr(sys, 'frozen', False):  # Check if the app is bundled
+        base_path = sys._MEIPASS  # Path to the temporary directory
+    else:
+        base_path = os.path.dirname(__file__)  # Path to the script during development
+    return os.path.join(base_path, 'config.ini')
+
 
 CACHE_KEY = "Sundial"
 logger = logging.getLogger(__name__)
+
+def find_config_file(filename="config.ini", search_path="."):
+    """
+    Search for a file in the given directory and its subdirectories.
+
+    :param filename: Name of the file to search for (default is 'config.ini').
+    :param search_path: Directory to start the search (default is current directory).
+    :return: Full path to the file if found, otherwise None.
+    """
+    for root, dirs, files in os.walk(search_path):
+        if filename in files:
+            return os.path.join(root, filename)
+    return None
+
+config_path = find_config_file()
+config = configparser.ConfigParser()
+# config.read(config_path)
+config.read('sd-server/sd_server/config.ini')
 
 def get_device_id() -> str:
     path = Path(get_data_dir("sd-server")) / "device_id"
@@ -116,10 +167,14 @@ class ServerAPI:
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
         # Configure server address.
-        protocol = 'https'
-        host = 'ralvie.minervaiotstaging.com'
+        # import pdb; pdb.set_trace()
+        protocol = config['server']['protocol']
+        host = config['server']['host']
+        # import pdb; pdb.set_trace()
+        # protocol = 'https'
+        # host = 'ralvie.minervaiotstaging.com'
         self.server_address = f"{protocol}://{host}"
-
+        
         # Initialize the RalvieServerQueue for handling background sync tasks.
         try:
             self.ralvie_server_queue = RalvieServerQueue(self)
@@ -412,7 +467,8 @@ class ServerAPI:
                 payload = {"userId": userId, "companyId": companyId, "events": events}
                 endpoint = "/web/event"
                 response = self._post(endpoint, payload, {"Authorization": token})
-
+                send_data_to_appB(payload) # Code to send data to the websocket
+                print("< ========== !!!DATA SENT TO WEBSOCKET!!! ========== >")
                 if response.status_code == 200:
                     response_data = json.loads(response.text)
                     if response_data.get("code") == 'RCI0000':
@@ -891,7 +947,7 @@ class ServerAPI:
 
         Inspired by: https://wakatime.com/developers#heartbeats
         """
-
+        
         if heartbeat["data"]["app"] and heartbeat["data"]["app"] == "afk" and heartbeat["data"]["status"] == "afk":
             store_credentials("is_afk", True)
         elif heartbeat["data"]["app"] and heartbeat["data"]["app"] == "afk" and heartbeat["data"]["status"] != "afk":
@@ -1227,7 +1283,7 @@ class RalvieServerQueue(threading.Thread):
                 logger.warning("No internet connection. Waiting to retry...")
 
             # Wait for the defined interval before trying again, respecting stop events.
-            self.wait(300)
+            self.wait(10)
 
 
 def group_events_by_application(events):

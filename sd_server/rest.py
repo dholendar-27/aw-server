@@ -756,6 +756,11 @@ class HeartbeatResource(Resource):
         if heartbeat_data['data'].get('app') == 'ApplicationFrameHost.exe':
             heartbeat_data['data']['app'] = f"{heartbeat_data['data']['title']}.exe"
 
+        if heartbeat_data['data']['app'] == 'LockApp.exe':
+            heartbeat_data['data']['app'] = 'afk'
+            heartbeat_data['data']['title'] = 'Idle Time'
+            heartbeat_data['data']['status'] = 'afk'
+
         # Retrieve settings
         settings = db_cache.retrieve("settings_cache")
         if not settings:
