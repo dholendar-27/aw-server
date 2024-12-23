@@ -117,7 +117,7 @@ class ServerAPI:
 
         # Configure server address.
         protocol = 'https'
-        host = 'ralvie.minervaiotdev.com'
+        host = 'ralvie.minervaiotstaging.com'
         self.server_address = f"{protocol}://{host}"
 
         # Initialize the RalvieServerQueue for handling background sync tasks.
