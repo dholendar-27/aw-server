@@ -761,69 +761,73 @@ class HeartbeatResource(Resource):
             heartbeat_data['data']['title'] = 'Idle Time'
             heartbeat_data['data']['status'] = 'afk'
 
+        # import pdb; pdb.set_trace()
+
         # Retrieve settings
         settings = db_cache.retrieve("settings_cache")
         if not settings:
             settings = current_app.api.retrieve_all_settings()
             db_cache.store("settings_cache", settings)
 
-        # Extract the weekdays schedule
-        weekdays_schedule = settings.get("weekdays_schedule", {})
-        current_time = datetime.now()
-        day_name = current_time.strftime("%A").lower()
-        schedule = settings.get("schedule", False)
+        if heartbeat_data['duration'] >= settings['threshold']:
 
-        # Check if the current day is scheduled (True)
-        if not weekdays_schedule.get(day_name.capitalize(), False) and schedule:
-            print(f"Skipping data capture for {day_name} - not scheduled.")
-            return {"message": f"Skipping data capture for {day_name}."}, 200
+            # Extract the weekdays schedule
+            weekdays_schedule = settings.get("weekdays_schedule", {})
+            current_time = datetime.now()
+            day_name = current_time.strftime("%A").lower()
+            schedule = settings.get("schedule", False)
 
-        # Time range check for scheduling
-        start_time_str = weekdays_schedule.get("starttime")
-        end_time_str = weekdays_schedule.get("endtime")
+            # Check if the current day is scheduled (True)
+            if not weekdays_schedule.get(day_name.capitalize(), False) and schedule:
+                print(f"Skipping data capture for {day_name} - not scheduled.")
+                return {"message": f"Skipping data capture for {day_name}."}, 200
 
-        if start_time_str and end_time_str and schedule:
+            # Time range check for scheduling
+            start_time_str = weekdays_schedule.get("starttime")
+            end_time_str = weekdays_schedule.get("endtime")
+
+            if start_time_str and end_time_str and schedule:
+                try:
+                    time_format = "%H:%M"
+                    local_start_time = datetime.strptime(f"{current_time.date()} {start_time_str}",
+                                                        f"%Y-%m-%d {time_format}")
+                    local_end_time = datetime.strptime(f"{current_time.date()} {end_time_str}", f"%Y-%m-%d {time_format}")
+                    print(local_start_time,local_end_time,current_time)
+
+                    # Check if the current time is within the scheduled range
+                    if not (local_start_time <= current_time < local_end_time):
+                        print(f"Skipping data capture due to time restriction. Current time: {current_time}, "
+                            f"Scheduled start: {local_start_time}, Scheduled end: {local_end_time}.")
+                        return {"message": "Skipping data capture due to time restriction."}, 200
+
+                except (ValueError, json.JSONDecodeError) as e:
+                    logger.error(f"Error parsing schedule: {e}")
+                    return {"message": "Schedule parsing error."}, 500
+
+            # Proceed with heartbeat processing
+            heartbeat = Event(**heartbeat_data)
+            cached_credentials = cache_user_credentials(CACHE_KEY)
+
+            if cached_credentials is None:
+                return {"message": "No cached credentials."}, 400
+
             try:
-                time_format = "%H:%M"
-                local_start_time = datetime.strptime(f"{current_time.date()} {start_time_str}",
-                                                     f"%Y-%m-%d {time_format}")
-                local_end_time = datetime.strptime(f"{current_time.date()} {end_time_str}", f"%Y-%m-%d {time_format}")
-                print(local_start_time,local_end_time,current_time)
+                pulsetime = float(request.args.get("pulsetime"))
+            except (ValueError, TypeError):
+                return {"message": "Missing or invalid required parameter 'pulsetime'"}, 400
 
-                # Check if the current time is within the scheduled range
-                if not (local_start_time <= current_time < local_end_time):
-                    print(f"Skipping data capture due to time restriction. Current time: {current_time}, "
-                          f"Scheduled start: {local_start_time}, Scheduled end: {local_end_time}.")
-                    return {"message": "Skipping data capture due to time restriction."}, 200
+            if not self.lock.acquire(timeout=1):
+                logger.warning("Heartbeat lock could not be acquired within a reasonable time.")
+                return {"message": "Failed to acquire heartbeat lock."}, 500
 
-            except (ValueError, json.JSONDecodeError) as e:
-                logger.error(f"Error parsing schedule: {e}")
-                return {"message": "Schedule parsing error."}, 500
-
-        # Proceed with heartbeat processing
-        heartbeat = Event(**heartbeat_data)
-        cached_credentials = cache_user_credentials(CACHE_KEY)
-
-        if cached_credentials is None:
-            return {"message": "No cached credentials."}, 400
-
-        try:
-            pulsetime = float(request.args.get("pulsetime"))
-        except (ValueError, TypeError):
-            return {"message": "Missing or invalid required parameter 'pulsetime'"}, 400
-
-        if not self.lock.acquire(timeout=1):
-            logger.warning("Heartbeat lock could not be acquired within a reasonable time.")
-            return {"message": "Failed to acquire heartbeat lock."}, 500
-
-        try:
-            event = current_app.api.heartbeat(bucket_id, heartbeat, pulsetime)
-            if event:
-                return event.to_json_dict(), 200
-            else:
-                return {"message": "Heartbeat failed."}, 500
-        finally:
-            self.lock.release()
+            try:
+                event = current_app.api.heartbeat(bucket_id, heartbeat, pulsetime)
+                if event:
+                    return event.to_json_dict(), 200
+                else:
+                    return {"message": "Heartbeat failed."}, 500
+            finally:
+                self.lock.release()
 
 
 # QUERY
@@ -1384,6 +1388,20 @@ class LaunchOnStart(Resource):
         """Handles Windows-specific logic for launch on start."""
         set_autostart_registry(autostart=status)  # Ensure set_autostart_registry() is defined elsewhere
 
+
+@api.route("/0/threshold")
+class Threshold(Resource):
+    def post(self):
+        data = request.get_json()
+        print("IN REST")
+        seconds = data['threshold']
+
+        try:
+            # Save threshold settings
+            current_app.api.save_settings('threshold', seconds)
+            return {"message": "Threshold saved"}
+        except Exception as e:
+            return {"message":e}
 
 @api.route("/0/ralvie/refresh_token")
 class RalvieTokenRefreshResource(Resource):

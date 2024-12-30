@@ -91,8 +91,8 @@ def find_config_file(filename="config.ini", search_path="."):
 
 config_path = find_config_file()
 config = configparser.ConfigParser()
-# config.read(config_path)
-config.read('sd-server/sd_server/config.ini')
+config.read(config_path)
+# config.read('sd-server/sd_server/config.ini')
 
 def get_device_id() -> str:
     path = Path(get_data_dir("sd-server")) / "device_id"
