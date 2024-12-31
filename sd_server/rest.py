@@ -1211,41 +1211,33 @@ class Idletime(Resource):
         Manage the idle time state by starting or stopping the 'sd-watcher-afk' module.
 
         The 'status' query parameter controls whether the module is started or stopped:
-        - If 'status' is 'start', the module is started.
-        - If 'status' is 'stop', the module is stopped.
-
         @return a JSON object with a message indicating the new state.
         """
 
         try:
             module = manager.module_status("sd-watcher-afk")
-            status = request.args.get("status")
+            status = request.json.get("status")
+            print(type(status))
 
             if module is None or "is_alive" not in module:
                 return {"message": "Module status could not be retrieved"}, 500
-            state = False
             # Check the status argument and start/stop the module accordingly
-            if status == "start":
+            if status:
+                print(111111111)
                 if not module["is_alive"]:
                     manager.start("sd-watcher-afk")
                     message = "Idle time has started"
-                    state = True
                 else:
                     message = "Idle time is already running"
-                    state = True
-            elif status == "stop":
+            else:
+                print(22222222)
                 if module["is_alive"]:
                     manager.stop("sd-watcher-afk")
                     message = "Idle time has stopped"
-                    state = False
                 else:
                     message = "Idle time is already stopped"
-                    state = False
-            else:
-                return {"message": "Invalid status parameter. Use 'start' or 'stop'."}, 400
 
             # Save the new idle time state in the settings
-            current_app.api.save_settings("idle_time", state)
             return {"message": message}, 200
 
         except Exception as e:
@@ -1363,44 +1355,38 @@ class SyncServer(Resource):
             return {"message": "Internal server error"}, 500
 
 
-@api.route("/0/launchOnStart")
-class LaunchOnStart(Resource):
-    @api.doc(security="Bearer")
-    def get(self):
-        status = request.args.get("status", type=str)  # Expecting status as a query parameter
+# @api.route("/0/launchOnStart")
+# class LaunchOnStart(Resource):
+#     @api.doc(security="Bearer")
+#     def get(self):
+#         status = request.args.get("status", type=str)  # Expecting status as a query parameter
 
-        if status is None:
-            return {"error": "Status is required in the request query."}, 400
+#         if status is None:
+#             return {"error": "Status is required in the request query."}, 400
 
-        # Convert status to boolean
-        status = status.lower() in ["start"]
+#         if sys.platform == "darwin":
+#             if status:
+#                 launch_app()  # Ensure this function is defined
+#                 current_app.api.save_settings("launch", status)
+#                 return {"message": "Launch on start enabled."}, 200
+#             else:
+               
+#                 delete_launch_app()  # Ensure this function is defined
+#                 current_app.api.save_settings("launch", status)
+#                 return {"message": "Launch on start disabled."}, 200
 
-        if sys.platform == "darwin":
-            if status:
-                launch_app()  # Ensure this function is defined
-                state = True
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start enabled."}, 200
-            else:
-                state = False
-                delete_launch_app()  # Ensure this function is defined
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start disabled."}, 200
+#         elif sys.platform == "win32":
+#             if status:
+#                 set_autostart_registry(autostart=True)  # Ensure this function is defined
+#                 current_app.api.save_settings("launch", status)
+#                 return {"message": "Launch on start enabled."}, 200
+#             else:
+#                 set_autostart_registry(autostart=False)  # Ensure this function is defined
+#                 current_app.api.save_settings("launch", status)
+#                 return {"message": "Launch on start disabled."}, 200
 
-        elif sys.platform == "win32":
-            if status:
-                state = True
-                set_autostart_registry(autostart=True)  # Ensure this function is defined
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start enabled."}, 200
-            else:
-                state = False
-                set_autostart_registry(autostart=False)  # Ensure this function is defined
-                current_app.api.save_settings("launch", state)
-                return {"message": "Launch on start disabled."}, 200
-
-        else:
-            return {"error": "Unsupported platform."}, 400  # Handle unsupported platforms
+#         else:
+#             return {"error": "Unsupported platform."}, 400  # Handle unsupported platforms
 
 # Refresh token
 
