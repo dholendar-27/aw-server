@@ -1474,3 +1474,12 @@ class initdb(Resource):
 class server_status(Resource):
     def get(self):
         return 200
+
+
+@api.route("/0/sundialinfo")
+class status_check(Resource):
+    def get(self):
+        cache_key = "Sundial"
+        cached_credentials = cache_user_credentials("Sundial")
+        if cached_credentials:
+            return {"email": cached_credentials.get("email"), "comapny_id":cached_credentials.get("companyId"), "user_id": cached_credentials.get("userId"),"version":"2.0.0","server":"staging"}, 200
