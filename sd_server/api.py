@@ -36,8 +36,16 @@ from .__about__ import __version__
 from .exceptions import NotFound
 import requests as req
 from dateutil import parser
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
 
 logger = logging.getLogger(__name__)
+
+if os.environ.get('SSLKEYLOGFILE'):
+    os.environ.pop('SSLKEYLOGFILE', None)
+
 
 def get_device_id() -> str:
     path = Path(get_data_dir("sd-server")) / "device_id"
@@ -50,6 +58,19 @@ def get_device_id() -> str:
             f.write(uuid)
         return uuid
 
+def create_retry_session(retries=3, backoff_factor=0.3):
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
 
 def check_bucket_exists(f):
     @functools.wraps(f)
@@ -82,27 +103,34 @@ def _log_request_exception(e: req.RequestException):
     except json.JSONDecodeError:
         pass
 
+
 class ServerAPI:
-    def __init__(self, db, testing) -> None:
+    def __init__(self, db, testing: bool) -> None:
         """
-         Initialize the Sundial instance. This is the method that must be called by the user to initialize the Sundail instance
+        Initialize the Sundial instance. This is the method that must be called by the user to initialize the Sundial instance.
 
-         @param db - Database instance to use for communication
-         @param testing - True if we are testing False otherwise.
-
-         @return A boolean indicating success or failure of the initialization. If True the instance will be initialized
+        :param db: Database instance to use for communication.
+        :param testing: True if we are testing, False otherwise.
+        :return: None
         """
         cache_key = "Sundial"
-        cache_user_credentials(cache_key,"SD_KEYS")
+        cache_user_credentials("Sundial")
         self.db = db
         self.testing = testing
-        self.last_event = {}  # type: dict
-        self.server_address = "{protocol}://{host}:{port}".format(
-            protocol='http', host='14.97.160.178', port=9010
-            # protocol='http', host='localhost:9010'
+        self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
-        )
-        self.ralvie_server_queue = RalvieServerQueue(self)
+        # Configure server address.
+        protocol = 'https'
+        host = 'ralvie.minervaiotdev.com'
+        self.server_address = f"{protocol}://{host}"
+
+        # Initialize the RalvieServerQueue for handling background sync tasks.
+        try:
+            self.ralvie_server_queue = RalvieServerQueue(self)
+            logger.info("RalvieServerQueue initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize RalvieServerQueue: {e}")
+            self.ralvie_server_queue = None
 
     def save_settings(self, code, value) -> None:
         """
@@ -370,71 +398,81 @@ class ServerAPI:
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
+            logger.info(f"User ID from load_key: {userId}")
             cache_key = "Sundial"
             cached_credentials = get_credentials(cache_key)
-            companyId=cached_credentials['companyId']
-            if not userId:
-                time.sleep(300)
-                userId = load_key("userId")  # Load userId again after waiting if not already loaded
-            data = self.get_non_sync_events()
-            if data and data.get("events") and userId:  # Check if data and events are available
-                # print("Total events:", len(data["events"]))
+            companyId = cached_credentials.get('companyId')
+            token = cached_credentials.get('token')
 
-                payload = {"userId": userId, "companyId":companyId, "events": data["events"]}
+            if not userId or not token:
+                logger.warning("User ID or token is missing; unable to sync.")
+                return {"status": "missing_credentials"}
+
+            data = self.get_non_sync_events()
+            if data.get("status") == "NoEvents":
+                return {"status": "NoEvents"}
+
+            events = data.get("events", [])
+            if events:
+                payload = {"userId": userId, "companyId": companyId, "events": events}
                 endpoint = "/web/event"
-                response = self._post(endpoint, payload)
+                response = self._post(endpoint, payload, {"Authorization": token})
 
                 if response.status_code == 200:
                     response_data = json.loads(response.text)
                     if response_data.get("code") == 'RCI0000':
-                        event_ids = [obj['event_id'] for obj in data["events"]]
-                        if event_ids:
-                            self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
-                            self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
-                            return {"status": "success"}
-                        else:
-                            return {"status": "no_event_ids"}  # Return status in case of no event IDs
+                        event_ids = [obj['event_id'] for obj in events]
+                        self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
+                        self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
+                        logger.info(f"Successfully synced {len(events)} events.")
+                        return {"status": "success"}
                     else:
-                        # Log error when response code is not 'RCI0000'
-                        logger.error("Response code not as expected: %s", response_data.get("code"))
-                        return {"status": "unexpected_response_code"}  # Return status for unexpected response code
+                        logger.error(f"Unexpected response code: {response_data.get('code')}")
+                        return {"status": "unexpected_response_code", "code": response_data.get("code")}
+                else:
+                    logger.error(f"Sync failed with status code: {response.status_code}")
+                    return {"status": "sync_failed", "error": response.text}
             else:
-                return {"status": "Synced_already"}
+                logger.info("No events to sync.")
+                return {"status": "no_events"}
         except Exception as e:
-            # Log the error occurred
-            logger.error("Error occurred during sync_events_to_ralvie: %s", e)
-            return {"status": "error_occurred"}  # Return status in case of exception
+            logger.error(f"Error during sync_events_to_ralvie: {e}")
+            return {"status": "error_occurred", "message": str(e)}
 
     def get_user_credentials(self, userId, token):
         """
-        Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user '
+        Get credentials for a user. This is a wrapper around the get_credentials endpoint to provide access to the user's credentials.
 
-        @param userId
-        @param token
+        @param userId: User ID
+        @param token: Authorization token
         """
 
         cache_key = "Sundial"
         endpoint = f"/web/user/{userId}/credentials"
         user_credentials = self._get(endpoint, {"Authorization": token})
 
-        # This function is used to retrieve the user credentials.
         if user_credentials.status_code == 200 and json.loads(user_credentials.text)["code"] == 'RCI0000':
             credentials_data = json.loads(user_credentials.text)["data"]["credentials"]
             user_data = json.loads(user_credentials.text)["data"]["user"]
 
+            # Clear the cache and keychain only for the relevant service key (SD_KEYS)
+            clear_credentials("Sundial")
+            delete_password("Sundial")
+
+            # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
             data_encryption_key = credentials_data["dataEncryptionKey"]
             user_key = credentials_data["userKey"]
             email = user_data.get("email", None)
             phone = user_data.get("phone", None)
-            companyId=user_data.get("companyId",None)
+            companyId = user_data.get("companyId", None)
+            companyName = user_data.get("companyName", None)
             firstName = user_data.get("firstName", None)
-            lastName = user_data.get("lastName", None)
             key = user_key
             encrypted_db_key = encrypt_uuid(db_key, key)
             encrypted_data_encryption_key = encrypt_uuid(data_encryption_key, key)
             encrypted_user_key = encrypt_uuid(user_key, key)
-
+            # Create the SD_KEYS dictionary
             SD_KEYS = {
                 "user_key": user_key,
                 "encrypted_db_key": encrypted_db_key,
@@ -442,27 +480,25 @@ class ServerAPI:
                 "email": email,
                 "phone": phone,
                 "firstname": firstName,
-                "lastname": lastName,
                 "userId": userId,
-                "token" : token,
-                "companyId":companyId,
+                "token": token,
+                "companyId": companyId,
+                "companyName": companyName,
+                "Authenticated": True,
             }
 
-            store_credentials(cache_key, SD_KEYS)
+            # Update the cache first
+            store_credentials("Sundial", SD_KEYS)
+
+            # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            add_password("SD_KEYS", serialized_data)
-
-            cached_credentials = get_credentials(cache_key)
-            key_decoded = cached_credentials.get("user_key")
-
-            decrypted_db_key = decrypt_uuid(encrypted_db_key, key_decoded)
-            decrypted_user_key = decrypt_uuid(encrypted_user_key, key_decoded)
-            decrypted_data_encryption_key = decrypt_uuid(encrypted_data_encryption_key, key_decoded)
-            self.last_event = {}
-
-            print(f"user_key: {decrypted_user_key}")
-            print(f"db_key: {decrypted_db_key}")
-            print(f"watcher_key: {decrypted_data_encryption_key}")
+            status = add_password("Sundial", serialized_data)
+            print(status)
+            # Retrieve the cached credentials to confirm they were updated
+            cached_credentials = get_credentials("Sundial")
+            if cached_credentials:
+                key_decoded = cached_credentials.get("user_key")
+                self.last_event = {}
 
         return user_credentials
 
@@ -972,8 +1008,8 @@ class ServerAPI:
         end: Optional[datetime] = None,
     ) -> List[Event]:
         events = self.db.get_dashboard_events(starttime=start,endtime=end)
-
-        # groupedEvents = group_events_by_application(events)
+        # print("eventssssss", events)
+        # groupedEvents = group_events_by_application(events)   
 
         if len(events) > 0:
             event_start = parser.isoparse(events[0]["timestamp"])
@@ -993,28 +1029,23 @@ class ServerAPI:
             return json.loads(events_json)
         else: return None
 
-    def get_non_sync_events(
-        self
-    ) -> List[Event]:
+    def get_non_sync_events(self) -> List[Event]:
         events = self.db.get_non_sync_events()
-
-        if len(events) > 0:
+        if not events:
+            logger.info("No unsynced events found.")
+            return {"status": "NoEvents", "events": []}
+        try:
             event_start = parser.isoparse(events[0]["timestamp"])
-            start_hour = event_start.hour
-            start_min = event_start.minute
-            start_date_time = event_start
-
-            # Convert events list to JSON object using custom serializer
             events_json = json.dumps({
                 "events": events,
-                "start_hour": start_hour,
-                "start_min": start_min,
-                "start_date_time": start_date_time
+                "start_hour": event_start.hour,
+                "start_min": event_start.minute,
+                "start_date_time": event_start,
             }, default=datetime_serializer)
-
             return json.loads(events_json)
-        else: return None
-
+        except Exception as e:
+            logger.error(f"Error parsing events: {e}")
+            return {"status": "error", "message": str(e)}
 
     def get_most_used_apps(
         self,
@@ -1136,37 +1167,38 @@ def event_filter(most_used_apps,data):
 
         return json.loads(events_json)  # Parse the JSON string to a Python object
 
+
 class RalvieServerQueue(threading.Thread):
     def __init__(self, server: ServerAPI) -> None:
-        threading.Thread.__init__(self, daemon=True)
+        super().__init__(daemon=True)  # Initialize as a daemon thread
 
         self.server = server
         self.userId = ""
         self.connected = False
         self._stop_event = threading.Event()
-        self._attempt_reconnect_interval = 10
+        self._attempt_reconnect_interval = 10  # Interval between reconnection attempts
 
     def _try_connect(self) -> bool:
-        try:  # Try to connect
-            db_key = ""
+        try:
             cache_key = "Sundial"
-            cached_credentials = cache_user_credentials(cache_key,"SD_KEYS")
-            if cached_credentials != None:
+            cached_credentials = cache_user_credentials(cache_key)
+            if cached_credentials:
                 db_key = cached_credentials.get("encrypted_db_key")
-            else:
-                db_key == None
-            key = load_key("user_key")
-            if db_key == None or key == None:
-                self.connected = False
-                return self.connected
-            self.userId = load_key("userId")
-            self.connected = True
-        except Exception:
-            self.connected = False
+                user_key = load_key("user_key")
+                self.userId = load_key("userId")
 
+                if db_key and user_key and self.userId:
+                    self.connected = True
+                    return True
+                else:
+                    logger.warning("Missing necessary keys for connection.")
+            self.connected = False
+        except Exception as e:
+            logger.error(f"Failed to connect: {e}")
+            self.connected = False
         return self.connected
 
-    def wait(self, seconds) -> bool:
+    def wait(self, seconds: int) -> bool:
         return self._stop_event.wait(seconds)
 
     def should_stop(self) -> bool:
@@ -1176,11 +1208,32 @@ class RalvieServerQueue(threading.Thread):
         self._stop_event.set()
 
     def run(self) -> None:
-        while True:
+        # Attempt to establish a connection on start
+        if not self._try_connect():
+            logger.info("Initial connection attempt failed. Will retry.")
+
+        while not self.should_stop():
+            # Check internet connection and attempt to sync
             if is_internet_connected():
-                print("Connected to internet")
-                self.server.sync_events_to_ralvie()
-                time.sleep(300)
+                if not self.connected:
+                    logger.info("Attempting to reconnect...")
+                    self._try_connect()
+
+                if self.connected:
+                    logger.info("Connected to internet. Attempting to sync events.")
+                    try:
+                        sync_result = self.server.sync_events_to_ralvie()
+                        logger.info(f"Sync result: {sync_result}")
+                    except Exception as e:
+                        logger.error(f"Error during sync: {e}")
+                else:
+                    logger.warning("Not connected. Retrying in a few seconds.")
+            else:
+                logger.warning("No internet connection. Waiting to retry...")
+
+            # Wait for the defined interval before trying again, respecting stop events.
+            self.wait(300)
+
 
 def group_events_by_application(events):
     grouped_events = {}
