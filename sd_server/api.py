@@ -3,7 +3,7 @@ from itertools import groupby
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-import os
+import uuid
 from pathlib import Path
 from socket import gethostname
 import threading
@@ -40,7 +40,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
-CACHE_KEY = "Sundial"
+
 logger = logging.getLogger(__name__)
 
 def get_device_id() -> str:
@@ -109,15 +109,15 @@ class ServerAPI:
         :param testing: True if we are testing, False otherwise.
         :return: None
         """
-
-        cache_user_credentials(CACHE_KEY)
+        cache_key = "Sundial"
+        cache_user_credentials("SD_KEYS")
         self.db = db
         self.testing = testing
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
         # Configure server address.
         protocol = 'https'
-        host = 'ralvie.minervaiotstaging.com'
+        host = 'ralvie.minervaiotdev.com'
         self.server_address = f"{protocol}://{host}"
 
         # Initialize the RalvieServerQueue for handling background sync tasks.
@@ -206,7 +206,8 @@ class ServerAPI:
 
          @return A : class : ` Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -229,7 +230,8 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -257,7 +259,8 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -286,9 +289,9 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {}
+        max_address = hex(uuid.getnode())
+        headers = {"X-SUNDIAL-MAC-ADDRESS": max_address}
         payload = {}
-
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -309,7 +312,8 @@ class ServerAPI:
 
          @return A : class : ` req. Response ` object
         """
-        headers = {"Content-type": "application/json"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "X-SUNDIAL-MAC-ADDRESS": max_address}
         if params:
             headers.update(params)
         return req.delete(self._url(endpoint), data=json.dumps(data), headers=headers)
@@ -394,7 +398,7 @@ class ServerAPI:
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
-            cache_key = CACHE_KEY
+            cache_key = "SD_KEYS"
             cached_credentials = get_credentials(cache_key)
             companyId = cached_credentials.get('companyId')
             token = cached_credentials.get('token')
@@ -451,8 +455,8 @@ class ServerAPI:
             user_data = json.loads(user_credentials.text)["data"]["user"]
 
             # Clear the cache and keychain only for the relevant service key (SD_KEYS)
-            clear_credentials(CACHE_KEY)
-            delete_password(CACHE_KEY)
+            clear_credentials("SD_KEYS")
+            delete_password("SD_KEYS")
 
             # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
@@ -483,14 +487,14 @@ class ServerAPI:
             }
 
             # Update the cache first
-            store_credentials(CACHE_KEY, SD_KEYS)
+            store_credentials("SD_KEYS", SD_KEYS)
 
             # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            status = add_password(CACHE_KEY, serialized_data)
+            status = add_password("SD_KEYS", serialized_data)
             print(status)
             # Retrieve the cached credentials to confirm they were updated
-            cached_credentials = get_credentials(CACHE_KEY)
+            cached_credentials = get_credentials("SD_KEYS")
             if cached_credentials:
                 key_decoded = cached_credentials.get("user_key")
                 self.last_event = {}
@@ -544,11 +548,11 @@ class ServerAPI:
         """
         cache_key = "Sundial"
         cached_credentials = get_credentials(cache_key)
-        print(cached_credentials)
+
         image = self.db.retrieve_setting("profilePic")
         response_data = {"email": cached_credentials.get("email"), "phone": cached_credentials.get("phone"),
                          "firstname": cached_credentials.get("firstname"),
-                         "companyname":cached_credentials.get("companyName"),}
+                         "lastname": cached_credentials.get("lastname")}
         # Set the image s profile image
         if image:
             response_data['ProfileImage'] = image
