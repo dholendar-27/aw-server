@@ -43,6 +43,10 @@ from requests.packages.urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
+if os.environ.get('SSLKEYLOGFILE'):
+    os.environ.pop('SSLKEYLOGFILE', None)
+
+
 def get_device_id() -> str:
     path = Path(get_data_dir("sd-server")) / "device_id"
     if path.exists():
@@ -110,7 +114,8 @@ class ServerAPI:
         :return: None
         """
         cache_key = "Sundial"
-        cache_user_credentials("SD_KEYS")
+        cache_user_credentials("Sundial")
+
         self.db = db
         self.testing = testing
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
@@ -398,7 +403,8 @@ class ServerAPI:
     def sync_events_to_ralvie(self):
         try:
             userId = load_key("userId")
-            cache_key = "SD_KEYS"
+            logger.info(f"User ID from load_key: {userId}")
+            cache_key = "Sundial"
             cached_credentials = get_credentials(cache_key)
             companyId = cached_credentials.get('companyId')
             token = cached_credentials.get('token')
@@ -459,9 +465,8 @@ class ServerAPI:
             user_data = json.loads(user_credentials.text)["data"]["user"]
 
             # Clear the cache and keychain only for the relevant service key (SD_KEYS)
-            clear_credentials("SD_KEYS")
-            delete_password("SD_KEYS")
-
+            clear_credentials("Sundial")
+            delete_password("Sundial")
             # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
             data_encryption_key = credentials_data["dataEncryptionKey"]
@@ -491,14 +496,14 @@ class ServerAPI:
             }
 
             # Update the cache first
-            store_credentials("SD_KEYS", SD_KEYS)
+            store_credentials("Sundial", SD_KEYS)
 
             # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            status = add_password("SD_KEYS", serialized_data)
+            status = add_password("Sundial", serialized_data)
             print(status)
             # Retrieve the cached credentials to confirm they were updated
-            cached_credentials = get_credentials("SD_KEYS")
+            cached_credentials = get_credentials("Sundial")
             if cached_credentials:
                 key_decoded = cached_credentials.get("user_key")
                 self.last_event = {}
@@ -1011,8 +1016,8 @@ class ServerAPI:
         end: Optional[datetime] = None,
     ) -> List[Event]:
         events = self.db.get_dashboard_events(starttime=start,endtime=end)
-
-        # groupedEvents = group_events_by_application(events)
+        # print("eventssssss", events)
+        # groupedEvents = group_events_by_application(events)   
 
         if len(events) > 0:
             event_start = parser.isoparse(events[0]["timestamp"])
