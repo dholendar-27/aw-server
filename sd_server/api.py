@@ -425,6 +425,10 @@ class ServerAPI:
                         self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
                         logger.info(f"Successfully synced {len(events)} events.")
                         return {"status": "success"}
+                    elif response_data.get("code") == 'RCE0219':
+                        event_ids = [obj['event_id'] for obj in events]
+                        self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
+                        return {"status": "success"}
                     else:
                         logger.error(f"Unexpected response code: {response_data.get('code')}")
                         return {"status": "unexpected_response_code", "code": response_data.get("code")}
@@ -1268,6 +1272,3 @@ def group_events_by_application(events):
     result_list = list(grouped_events.values())
 
     return result_list
-
-
-
