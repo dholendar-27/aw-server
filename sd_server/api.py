@@ -1,6 +1,5 @@
 import os
 import functools
-from itertools import groupby
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -8,11 +7,6 @@ import uuid
 from pathlib import Path
 from socket import gethostname
 import threading
-import time
-
-from sd_core import db_cache
-from sd_core.cache import cache_user_credentials
-from sd_core.cache import *
 from typing import (
     Any,
     Callable,
@@ -21,26 +15,27 @@ from typing import (
     Optional,
     Union,
 )
+
 from uuid import uuid4
-from sd_core.util import decrypt_uuid, encrypt_uuid, load_key, is_internet_connected
-from sd_server.config import PROTOCOL, HOST
-
 import iso8601
-from sd_core.dirs import get_data_dir
-from sd_core.log import get_log_file_path
-from sd_core.models import Event
-from sd_query import query2
-from sd_transform import heartbeat_merge
-import keyring
-import pytz
-
-from .__about__ import __version__
-from .exceptions import NotFound
 import requests as req
 from dateutil import parser
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+
+from sd_core.cache import cache_user_credentials
+from sd_core.cache import *
+from sd_core.util import encrypt_uuid, load_key, is_internet_connected
+from sd_server.config import PROTOCOL, HOST
+from sd_core.dirs import get_data_dir
+from sd_core.log import get_log_file_path
+from sd_core.models import Event
+from sd_query import query2
+from sd_transform import heartbeat_merge
+
+from .__about__ import __version__
+from .exceptions import NotFound
 
 
 logger = logging.getLogger(__name__)
