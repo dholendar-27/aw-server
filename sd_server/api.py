@@ -3,7 +3,7 @@ from itertools import groupby
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-import os
+import uuid
 from pathlib import Path
 from socket import gethostname
 import threading
@@ -115,6 +115,7 @@ class ServerAPI:
         """
         cache_key = "Sundial"
         cache_user_credentials("Sundial")
+
         self.db = db
         self.testing = testing
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
@@ -210,7 +211,8 @@ class ServerAPI:
 
          @return A : class : ` Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -233,7 +235,8 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -261,7 +264,8 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "charset": "utf-8", "X-SUNDIAL-MAC-ADDRESS": max_address}
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -290,9 +294,9 @@ class ServerAPI:
 
          @return The response from the request as a : class : ` req. Response `
         """
-        headers = {}
+        max_address = hex(uuid.getnode())
+        headers = {"X-SUNDIAL-MAC-ADDRESS": max_address}
         payload = {}
-
         # Update the headers with the params.
         if params:
             headers.update(params)
@@ -313,7 +317,8 @@ class ServerAPI:
 
          @return A : class : ` req. Response ` object
         """
-        headers = {"Content-type": "application/json"}
+        max_address = hex(uuid.getnode())
+        headers = {"Content-type": "application/json", "X-SUNDIAL-MAC-ADDRESS": max_address}
         if params:
             headers.update(params)
         return req.delete(self._url(endpoint), data=json.dumps(data), headers=headers)
@@ -426,6 +431,10 @@ class ServerAPI:
                         self.db.save_settings("last_sync_time", datetime.now(timezone.utc).astimezone().isoformat())
                         logger.info(f"Successfully synced {len(events)} events.")
                         return {"status": "success"}
+                    elif response_data.get("code") == 'RCE0219':
+                        event_ids = [obj['event_id'] for obj in events]
+                        self.db.update_server_sync_status(list_of_ids=event_ids, new_status=1)
+                        return {"status": "success"}
                     else:
                         logger.error(f"Unexpected response code: {response_data.get('code')}")
                         return {"status": "unexpected_response_code", "code": response_data.get("code")}
@@ -458,7 +467,6 @@ class ServerAPI:
             # Clear the cache and keychain only for the relevant service key (SD_KEYS)
             clear_credentials("Sundial")
             delete_password("Sundial")
-
             # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
             data_encryption_key = credentials_data["dataEncryptionKey"]
@@ -1269,6 +1277,3 @@ def group_events_by_application(events):
     result_list = list(grouped_events.values())
 
     return result_list
-
-
-
