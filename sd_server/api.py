@@ -23,6 +23,7 @@ from typing import (
 )
 from uuid import uuid4
 from sd_core.util import decrypt_uuid, encrypt_uuid, load_key, is_internet_connected
+from sd_server.config import PROTOCOL, HOST
 
 import iso8601
 from sd_core.dirs import get_data_dir
@@ -122,9 +123,7 @@ class ServerAPI:
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
         # Configure server address.
-        protocol = 'https'
-        host = 'ralvie.minervaiotstaging.com'
-        self.server_address = f"{protocol}://{host}"
+        self.server_address = f"{PROTOCOL}://{HOST}"
 
         # Initialize the RalvieServerQueue for handling background sync tasks.
         try:
