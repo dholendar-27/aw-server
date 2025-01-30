@@ -973,11 +973,16 @@ class SaveSettings(Resource):
                     code=code, value=value_json)
 
                 # Prepare response dictionary
-                result_dict = {
-                    "id": result.id,  # Assuming id is the primary key of SettingsModel
-                    "code": result.code,
-                    "value": value_json  # Use the converted value
-                }
+                if "id" in result and "code" in result:
+                    result_dict = {
+                        "id": result.id,  # Assuming id is the primary key of SettingsModel
+                        "code": result.code,
+                        "value": value_json  # Use the converted value
+                    }
+                else:
+                    result_dict = {                    
+                        "value": value_json  # Use the converted value
+                    }               
 
                 return result_dict, 200  # Return the result dictionary with a 200 status code
             else:
