@@ -19,12 +19,8 @@ flask-cors = "*"
 importlib-metadata = {version = "*", python = "<3.10"}
 werkzeug = "^2.3.3"
 pyjwt="*"
-pandas="*"
-pdfkit="*"
-xlsxwriter="*"
 tzlocal="*"
-xhtml2pdf="*"
-reportlab="*"
+types-setuptools = "^75.8.0.20250110"
 
 [tool.poetry.dev-dependencies]
 mypy = "*"
@@ -33,7 +29,6 @@ pytest-flask = "*"
 pytest-benchmark = "*"
 pytest-cov = "*"
 types-Werkzeug = "*"
-types-pkg-resources = "*"
 types-Flask = "*"
 black = "^23.3.0"
 

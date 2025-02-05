@@ -9,7 +9,6 @@ import pytz
 from dateutil.parser import parse
 from sd_core.launch_start import delete_launch_app, launch_app, check_startup_status, set_autostart_registry
 from sd_core.util import authenticate, is_internet_connected, reset_user
-import pandas as pd
 from datetime import datetime, timedelta, date, time
 import iso8601
 from sd_core import schema, db_cache
@@ -971,7 +970,7 @@ class SaveSettings(Resource):
                 # Save settings to the database
                 result = current_app.api.save_settings(
                     code=code, value=value_json)
-                
+
                 return result, 200  # Return the result dictionary with a 200 status code
             else:
                 # Handle the case where 'code' or 'value' is missing in the JSON body
@@ -1370,7 +1369,7 @@ class SyncServer(Resource):
 #                 current_app.api.save_settings("launch", status)
 #                 return {"message": "Launch on start enabled."}, 200
 #             else:
-               
+
 #                 delete_launch_app()  # Ensure this function is defined
 #                 current_app.api.save_settings("launch", status)
 #                 return {"message": "Launch on start disabled."}, 200
