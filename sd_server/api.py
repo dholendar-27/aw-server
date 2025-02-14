@@ -1,6 +1,5 @@
 import os
 import functools
-from itertools import groupby
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -8,11 +7,6 @@ import uuid
 from pathlib import Path
 from socket import gethostname
 import threading
-import time
-
-from sd_core import db_cache
-from sd_core.cache import cache_user_credentials
-from sd_core.cache import *
 from typing import (
     Any,
     Callable,
@@ -21,25 +15,27 @@ from typing import (
     Optional,
     Union,
 )
+
 from uuid import uuid4
-from sd_core.util import decrypt_uuid, encrypt_uuid, load_key, is_internet_connected
-
 import iso8601
-from sd_core.dirs import get_data_dir
-from sd_core.log import get_log_file_path
-from sd_core.models import Event
-from sd_query import query2
-from sd_transform import heartbeat_merge
-import keyring
-import pytz
-
-from .__about__ import __version__
-from .exceptions import NotFound
 import requests as req
 from dateutil import parser
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+
+from sd_core.cache import cache_user_credentials
+from sd_core.cache import *
+from sd_core.util import encrypt_uuid, load_key, is_internet_connected
+from sd_server.const import PROTOCOL, HOST, CACHE_KEY
+from sd_core.dirs import get_data_dir
+from sd_core.log import get_log_file_path
+from sd_core.models import Event
+from sd_query import query2
+from sd_transform import heartbeat_merge
+
+from .__about__ import __version__
+from .exceptions import NotFound
 
 
 logger = logging.getLogger(__name__)
@@ -113,18 +109,15 @@ class ServerAPI:
         :param db: Database instance to use for communication.
         :param testing: True if we are testing, False otherwise.
         :return: None
-        """
-        cache_key = "Sundial"
-        cache_user_credentials("Sundial")
+        """        
+        cache_user_credentials(CACHE_KEY)
 
         self.db = db
         self.testing = testing
         self.last_event = {}  # Stores the last event for each bucket to optimize event updates.
 
         # Configure server address.
-        protocol = 'https'
-        host = 'ralvie.minervaiotdev.com'
-        self.server_address = f"{protocol}://{host}"
+        self.server_address = f"{PROTOCOL}://{HOST}"
 
         # Initialize the RalvieServerQueue for handling background sync tasks.
         try:
@@ -369,8 +362,7 @@ class ServerAPI:
 
 
     def update_user_profile(self, access_token, file):
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
+        cached_credentials = get_credentials(CACHE_KEY)
         user_id = cached_credentials.get("userId")
         if user_id:
             endpoint = f"/web/user/{user_id}/profile"
@@ -405,8 +397,7 @@ class ServerAPI:
         try:
             userId = load_key("userId")
             logger.info(f"User ID from load_key: {userId}")
-            cache_key = "Sundial"
-            cached_credentials = get_credentials(cache_key)
+            cached_credentials = get_credentials(CACHE_KEY)
             companyId = cached_credentials.get('companyId')
             token = cached_credentials.get('token')
 
@@ -456,8 +447,6 @@ class ServerAPI:
         @param userId: User ID
         @param token: Authorization token
         """
-
-        cache_key = "Sundial"
         endpoint = f"/web/user/{userId}/credentials"
         user_credentials = self._get(endpoint, {"Authorization": token})
 
@@ -466,8 +455,8 @@ class ServerAPI:
             user_data = json.loads(user_credentials.text)["data"]["user"]
 
             # Clear the cache and keychain only for the relevant service key (SD_KEYS)
-            clear_credentials("Sundial")
-            delete_password("Sundial")
+            clear_credentials(CACHE_KEY)
+            delete_password(CACHE_KEY)
             # Extract and encrypt credentials
             db_key = credentials_data["dbKey"]
             data_encryption_key = credentials_data["dataEncryptionKey"]
@@ -497,14 +486,14 @@ class ServerAPI:
             }
 
             # Update the cache first
-            store_credentials("Sundial", SD_KEYS)
+            store_credentials(CACHE_KEY, SD_KEYS)
 
             # Serialize the data and update the secure storage
             serialized_data = json.dumps(SD_KEYS)
-            status = add_password("Sundial", serialized_data)
+            status = add_password(CACHE_KEY, serialized_data)
             print(status)
             # Retrieve the cached credentials to confirm they were updated
-            cached_credentials = get_credentials("Sundial")
+            cached_credentials = get_credentials(CACHE_KEY)
             if cached_credentials:
                 key_decoded = cached_credentials.get("user_key")
                 self.last_event = {}
@@ -518,9 +507,7 @@ class ServerAPI:
         @param userId
         @param token
         """
-
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
+        cached_credentials = get_credentials(CACHE_KEY)
         user_id = cached_credentials.get("userId")
 
         endpoint = f"/web/user/{user_id}"
@@ -539,9 +526,7 @@ class ServerAPI:
         @param userId
         @param token
         """
-
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
+        cached_credentials = get_credentials(CACHE_KEY)
         user_id = cached_credentials.get("userId")
 
         endpoint = f"/web/user/{user_id}/profile"
@@ -556,8 +541,7 @@ class ServerAPI:
 
          @return Dictionary that contains email phone firstname and lastname
         """
-        cache_key = "Sundial"
-        cached_credentials = get_credentials(cache_key)
+        cached_credentials = get_credentials(CACHE_KEY)
 
         image = self.db.retrieve_setting("profilePic")
         response_data = {"email": cached_credentials.get("email"), "phone": cached_credentials.get("phone"),
@@ -1189,8 +1173,7 @@ class RalvieServerQueue(threading.Thread):
 
     def _try_connect(self) -> bool:
         try:
-            cache_key = "Sundial"
-            cached_credentials = cache_user_credentials(cache_key)
+            cached_credentials = cache_user_credentials(CACHE_KEY)
             if cached_credentials:
                 db_key = cached_credentials.get("encrypted_db_key")
                 user_key = load_key("user_key")
